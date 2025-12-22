@@ -1,76 +1,50 @@
-
 # Explorateur de Documentation avec Gemini
 
-Cette application permet d'analyser des documentations textuelles et des ressources vidéo en utilisant l'IA Gemini. Elle est optimisée pour une interaction fluide et une analyse multimédia.
+Cette application permet d'analyser des documentations textuelles et des ressources vidéo en utilisant l'IA Gemini.
 
-## Installation sur Debian (ou Ubuntu)
+## Installation sur Debian
 
-Suivez ces étapes pour installer et lancer l'application sur un serveur ou une machine Debian.
+*(Voir les sections précédentes pour l'installation initiale)*
 
-### 1. Mise à jour du système et installation de Node.js
+## Mise à jour de l'application
 
-Ouvrez un terminal et exécutez les commandes suivantes :
+Pour mettre à jour votre instance directement sur le serveur avec les dernières modifications de votre dépôt GitHub :
 
-```bash
-# Mise à jour des dépôts
-sudo apt update
-
-# Installation de curl si nécessaire
-sudo apt install -y curl
-
-# Installation de Node.js (Version 20 recommandée)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-
-# Vérification des versions
-node -v
-npm -v
-```
-
-### 2. Clonage et Installation du Projet
+### 1. Utiliser le script automatique
+Nous avons inclus un script `update.sh` pour simplifier l'opération.
 
 ```bash
-# Cloner le dépôt (remplacez par votre URL GitHub)
-git clone https://github.com/votre-utilisateur/explorateur-docs-gemini.git
-cd explorateur-docs-gemini
+# Rendre le script exécutable (à faire une seule fois)
+chmod +x update.sh
 
-# Installer les dépendances
-npm install
+# Lancer la mise à jour
+./update.sh
 ```
 
-### 3. Configuration de la Clé API
-
-Créez un fichier `.env` à la racine du projet :
+### 2. Gestion en arrière-plan avec PM2 (Recommandé)
+Pour éviter que l'application ne s'arrête quand vous fermez votre terminal SSH, utilisez **PM2** :
 
 ```bash
-cp .env.example .env
+# Installation de PM2 globalement
+sudo npm install -g pm2
+
+# Lancer l'application en mode développement (écoute réseau)
+pm2 start "npm run dev" --name "explorateur-docs"
+
+# Pour que PM2 se lance au démarrage du serveur
+pm2 startup
+pm2 save
 ```
 
-Éditez le fichier `.env` et ajoutez votre clé API Gemini obtenue sur [Google AI Studio](https://aistudio.google.com/app/apikey) :
-```env
-API_KEY=votre_cle_ici
-```
+**Commandes utiles PM2 :**
+- `pm2 status` : Voir si l'app tourne.
+- `pm2 logs explorateur-docs` : Voir les erreurs en temps réel.
+- `pm2 restart explorateur-docs` : Redémarrer après une modification.
 
-### 4. Lancement
-
-**En mode développement :**
-```bash
-npm run dev
-```
-L'application sera accessible sur `http://localhost:5173`.
-
-**En mode production (Build) :**
-```bash
-npm run build
-# Les fichiers générés se trouveront dans le dossier /dist
-```
-
-## Fonctionnalités
-- 📄 Analyse de documentation via URL.
-- 🎥 Support des vidéos (YouTube, Vimeo, fichiers directs).
-- 💬 Chat intelligent en français.
-- 🌙 Interface sombre (Dark Mode) moderne.
-- 📱 Design responsive pour mobile et bureau.
+## Configuration Réseau (Rappel)
+- **Port** : 5173
+- **IP** : Utilisez `hostname -I` pour trouver l'adresse de votre serveur.
+- **Pare-feu** : `sudo ufw allow 5173/tcp`
 
 ## Licence
 Apache-2.0
