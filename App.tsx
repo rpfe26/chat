@@ -72,13 +72,8 @@ const App: React.FC = () => {
       let suggestionsArray: string[] = [];
       if (response.text) {
         try {
-          let jsonStr = response.text.trim();
-          const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s; 
-          const match = jsonStr.match(fenceRegex);
-          if (match && match[2]) {
-            jsonStr = match[2].trim();
-          }
-          const parsed = JSON.parse(jsonStr);
+          // Simplified parsing logic as we now use responseSchema
+          const parsed = JSON.parse(response.text.trim());
           if (parsed && Array.isArray(parsed.suggestions)) {
             suggestionsArray = parsed.suggestions.filter((s: unknown) => typeof s === 'string');
           }

@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -10,8 +11,8 @@ export enum MessageSender {
 }
 
 export interface UrlContextMetadataItem {
-  retrievedUrl: string; // Changed from retrieved_url
-  urlRetrievalStatus: string; // Changed from url_retrieval_status
+  uri: string;
+  title?: string;
 }
 
 export interface ChatMessage {

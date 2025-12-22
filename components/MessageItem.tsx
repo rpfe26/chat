@@ -128,14 +128,14 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {message.urlContext.map((meta, index) => {
-                  const isVideo = /(youtube|youtu\.be|vimeo|\.mp4|\.webm)/.test(meta.retrievedUrl);
+                  const isVideo = /(youtube|youtu\.be|vimeo|\.mp4|\.webm)/.test(meta.uri);
                   return (
-                    <a key={index} href={meta.retrievedUrl} target="_blank" rel="noopener noreferrer" 
+                    <a key={index} href={meta.uri} target="_blank" rel="noopener noreferrer" 
                        className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] border transition-colors ${
                          isVideo ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20' : 'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20'
                        }`}>
                       {isVideo ? <Video size={10} /> : <ExternalLink size={10} />}
-                      Source {index + 1}
+                      {meta.title || `Source ${index + 1}`}
                     </a>
                   );
                 })}
