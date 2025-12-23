@@ -4,14 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ChatMessage, MessageSender, AppView, UrlItem, KnowledgeFile, KnowledgeText, ChatSession } from './types';
 import { generateContentWithUrlContext } from './services/geminiService';
 import { apiService } from './services/apiService';
 import ChatInterface from './components/ChatInterface';
 import AdminView from './components/AdminView';
 import Sidebar from './components/Sidebar';
-import { Settings, GraduationCap, CloudCheck, CloudOff, Sparkles, Loader2, Database } from 'lucide-react';
+import { Settings, GraduationCap, CloudCheck, CloudOff, Sparkles, Loader2, Database, User } from 'lucide-react';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('chat');
@@ -25,18 +25,37 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  // Embed mode state
+  // Récupération de l'identité via URL (WordPress) ou LocalStorage
+  const { visitorId, visitorDisplayName } = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlName = params.get('v_name'); // ex: Jean_Dupont
+    const urlId = params.get('v_id');     // ex: wp_user_45
+
+    if (urlId && urlName) {
+      const decodedName = decodeURIComponent(urlName).replace(/_/g, ' ');
+      return { visitorId: urlId, visitorDisplayName: decodedName };
+    }
+
+    let id = localStorage.getItem('pedagochat_visitor_id');
+    if (!id) {
+      id = `anon-${Math.random().toString(36).substring(2, 11)}`;
+      localStorage.setItem('pedagochat_visitor_id', id);
+    }
+    return { visitorId: id, visitorDisplayName: id };
+  }, []);
+
   const [embedMode, setEmbedMode] = useState(false);
   const [embedSessionId, setEmbedSessionId] = useState<string | null>(null);
 
-  // Effect to handle URL hash for embedded mode
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
       const embedMatch = hash.match(/^#\/embed\/(.+)$/);
+      // Correction pour ignorer les query params dans le hash match
       if (embedMatch && embedMatch[1]) {
+        const idPart = embedMatch[1].split('?')[0];
         setEmbedMode(true);
-        setEmbedSessionId(embedMatch[1]);
+        setEmbedSessionId(idPart);
       } else {
         setEmbedMode(false);
         setEmbedSessionId(null);
@@ -47,7 +66,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Initial load from Backend or Local
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -57,11 +75,10 @@ const App: React.FC = () => {
         setIsLocalMode(localMode);
         setIsServerConnected(!localMode);
         
-        if (sessions.length > 0) {
+        if (sessions.length > 0 && !activeChatSessionId) {
           setActiveChatSessionId(sessions[0].id);
         }
       } catch (error) {
-        console.error("Erreur d'initialisation:", error);
         setIsLocalMode(true);
         setIsServerConnected(false);
       } finally {
@@ -69,23 +86,26 @@ const App: React.FC = () => {
       }
     };
     loadData();
-  }, []);
+    
+    const interval = setInterval(loadData, 5000);
+    return () => clearInterval(interval);
+  }, [activeChatSessionId]);
 
   const currentSession = allChatSessions.find(s => s.id === activeChatSessionId);
-  const currentKnowledgeBase = currentSession?.knowledgeBase || { urls: [], files: [], rawTexts: [] };
-  const currentChatMessages = currentSession?.chatMessages || [];
   const currentAssistantName = currentSession?.assistantName || 'Bob';
+
+  const filteredChatMessages = useMemo(() => {
+    if (!currentSession) return [];
+    return currentSession.chatMessages.filter(msg => 
+      msg.visitorId === visitorId || msg.sender === MessageSender.SYSTEM
+    );
+  }, [currentSession, visitorId]);
 
   const updateCurrentSessionOnServer = async (updatedSession: ChatSession) => {
     setIsSyncing(true);
     try {
       await apiService.updateSession(updatedSession.id, updatedSession);
-      const localMode = apiService.isLocalMode();
-      setIsLocalMode(localMode);
-      setIsServerConnected(!localMode);
     } catch (e) {
-      console.error("Sync error:", e);
-      setIsLocalMode(true);
       setIsServerConnected(false);
     } finally {
       setTimeout(() => setIsSyncing(false), 500);
@@ -105,106 +125,51 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (query: string, sessionId: string) => {
     const targetSession = allChatSessions.find(s => s.id === sessionId);
-    if (!query.trim() || isLoading || !process.env.API_KEY || !targetSession) return;
+    if (!query.trim() || isLoading || !targetSession) return;
     
     setIsLoading(true);
-    const userMsg: ChatMessage = { id: `u-${Date.now()}`, text: query, sender: MessageSender.USER, timestamp: new Date() };
-    const modelPlaceholder: ChatMessage = { id: `m-${Date.now()}`, text: 'Réflexion en cours...', sender: MessageSender.MODEL, timestamp: new Date(), isLoading: true };
+    const userMsg: ChatMessage = { 
+      id: `u-${Date.now()}`, 
+      text: query, 
+      sender: MessageSender.USER, 
+      timestamp: new Date(),
+      visitorId: visitorId 
+    };
+    
+    const modelPlaceholder: ChatMessage = { 
+      id: `m-${Date.now()}`, 
+      text: 'Réflexion en cours...', 
+      sender: MessageSender.MODEL, 
+      timestamp: new Date(), 
+      isLoading: true,
+      visitorId: visitorId 
+    };
 
-    const updatedSession = { ...targetSession, chatMessages: [...targetSession.chatMessages, userMsg, modelPlaceholder] };
+    const updatedMessages = [...targetSession.chatMessages, userMsg, modelPlaceholder];
+    const updatedSession = { ...targetSession, chatMessages: updatedMessages };
     
     setAllChatSessions(prev => prev.map(s => s.id === sessionId ? updatedSession : s));
 
     try {
       const response = await generateContentWithUrlContext(query, targetSession.knowledgeBase);
-      const finalMessages = updatedSession.chatMessages.map(msg => 
+      const finalMessages = updatedMessages.map(msg => 
         msg.id === modelPlaceholder.id 
-          ? { ...modelPlaceholder, text: response.text || "Désolé, je n'ai pas pu générer de réponse.", isLoading: false, urlContext: response.urlContextMetadata } 
+          ? { ...modelPlaceholder, text: response.text || "...", isLoading: false, urlContext: response.urlContextMetadata } 
           : msg
       );
-      const finalSession = { ...updatedSession, chatMessages: finalMessages };
+      const finalSession = { ...targetSession, chatMessages: finalMessages };
       setAllChatSessions(prev => prev.map(s => s.id === sessionId ? finalSession : s));
-      updateCurrentSessionOnServer(finalSession);
+      await updateCurrentSessionOnServer(finalSession);
     } catch (e: any) {
-      const errorSession = {
-        ...updatedSession,
-        chatMessages: updatedSession.chatMessages.map(msg => 
-          msg.id === modelPlaceholder.id 
-            ? { ...modelPlaceholder, text: e.message, sender: MessageSender.SYSTEM, isLoading: false } 
-            : msg
-        )
-      };
+      const errorMessages = updatedMessages.map(msg => 
+        msg.id === modelPlaceholder.id 
+          ? { ...modelPlaceholder, text: e.message, sender: MessageSender.SYSTEM, isLoading: false } 
+          : msg
+      );
+      const errorSession = { ...targetSession, chatMessages: errorMessages };
       setAllChatSessions(prev => prev.map(s => s.id === sessionId ? errorSession : s));
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const addUrl = (item: UrlItem) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, urls: [...session.knowledgeBase.urls, item] } }));
-  const removeUrl = (url: string) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, urls: session.knowledgeBase.urls.filter(u => u.url !== url) } }));
-  const addFile = (file: KnowledgeFile) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, files: [...session.knowledgeBase.files, file] } }));
-  const removeFile = (id: string) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, files: session.knowledgeBase.files.filter(f => f.id !== id) } }));
-  const addText = (text: KnowledgeText) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, rawTexts: [...session.knowledgeBase.rawTexts, text] } }));
-  const removeText = (id: string) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, rawTexts: session.knowledgeBase.rawTexts.filter(t => t.id !== id) } }));
-
-  const createNewChat = async (name: string) => {
-    const newSessionId = `chat-${Date.now()}`;
-    const newSession: ChatSession = {
-      id: newSessionId,
-      name: name,
-      knowledgeBase: { urls: [], files: [], rawTexts: [] },
-      chatMessages: [{
-        id: 'welcome-new',
-        text: `Bienvenue dans la session **${name}** ! Utilisez l'onglet "Base de Données" pour configurer ses connaissances.`,
-        sender: MessageSender.SYSTEM,
-        timestamp: new Date(),
-      }],
-      assistantName: 'Bob',
-    };
-
-    try {
-      await apiService.createSession(newSession);
-      const localMode = apiService.isLocalMode();
-      setIsLocalMode(localMode);
-      setIsServerConnected(!localMode);
-      setAllChatSessions(prev => [...prev, newSession]);
-      setActiveChatSessionId(newSession.id);
-      setView('admin');
-    } catch (e) {
-      console.error("Failed to create session", e);
-      setIsLocalMode(true);
-      setIsServerConnected(false);
-    }
-  };
-
-  const selectChat = (id: string) => {
-    setActiveChatSessionId(id);
-    setView('chat');
-    if (embedMode) window.location.hash = '#/'; 
-  };
-  
-  const handleAdminSelectChat = useCallback((id: string) => {
-    setActiveChatSessionId(id);
-    setView('admin');
-    if (embedMode) window.location.hash = '#/';
-  }, [embedMode]);
-
-  const deleteChat = async (id: string) => {
-    if (allChatSessions.length === 0) return;
-    const storageMsg = isLocalMode ? "Supprimer cette session de votre navigateur ?" : "Supprimer définitivement cette session du serveur ?";
-    if (confirm(storageMsg)) {
-      try {
-        await apiService.deleteSession(id);
-        setAllChatSessions(prev => {
-          const remaining = prev.filter(s => s.id !== id);
-          if (activeChatSessionId === id) {
-            setActiveChatSessionId(remaining.length > 0 ? remaining[0].id : null);
-          }
-          return remaining;
-        });
-      } catch (e) {
-        setIsServerConnected(false);
-      }
     }
   };
 
@@ -212,7 +177,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 text-indigo-600">
         <Loader2 className="animate-spin mb-4" size={48} />
-        <p className="font-bold animate-pulse">Initialisation PedagoChat...</p>
+        <p className="font-bold animate-pulse">Chargement de PedagoChat...</p>
       </div>
     );
   }
@@ -220,14 +185,15 @@ const App: React.FC = () => {
   if (embedMode) {
     const embeddedSession = allChatSessions.find(s => s.id === embedSessionId);
     if (embeddedSession) {
+      const sessionMessages = embeddedSession.chatMessages.filter(m => m.visitorId === visitorId || m.sender === MessageSender.SYSTEM);
       return (
         <div className="h-screen w-screen flex items-center justify-center bg-gray-50 p-4">
           <ChatInterface
-            messages={embeddedSession.chatMessages}
+            messages={sessionMessages}
             onSendMessage={(query) => handleSendMessage(query, embeddedSession.id)}
             isLoading={isLoading}
-            placeholderText="Posez une question à cette base..."
-            assistantName={embeddedSession.assistantName || 'Bob'}
+            placeholderText="Posez votre question..."
+            assistantName={embeddedSession.assistantName}
           />
         </div>
       );
@@ -243,7 +209,7 @@ const App: React.FC = () => {
         currentView={view}
         allChatSessions={allChatSessions}
         activeChatSessionId={activeChatSessionId}
-        onSelectChat={selectChat}
+        onSelectChat={(id) => { setActiveChatSessionId(id); setView('chat'); }}
       />
 
       <div className="flex flex-col flex-grow overflow-hidden">
@@ -253,23 +219,22 @@ const App: React.FC = () => {
               <GraduationCap className="text-white" size={22} />
             </div>
             <div>
-              <h1 className="text-sm font-black tracking-tighter text-gray-900">PEDAGOCHAT</h1>
+              <h1 className="text-sm font-black tracking-tighter text-gray-900 uppercase">PEDAGOCHAT</h1>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  {isSyncing ? (
-                     <div className="w-2 h-2 bg-amber-500 rounded-full animate-ping" />
-                  ) : isServerConnected ? (
-                     <CloudCheck size={10} className="text-green-600" />
-                  ) : isLocalMode ? (
-                     <Database size={10} className="text-amber-500" />
-                  ) : (
-                     <CloudOff size={10} className="text-red-500" />
-                  )}
-                  <span className={`text-[9px] uppercase font-bold ${isServerConnected ? 'text-green-600' : isLocalMode ? 'text-amber-500' : 'text-red-500'}`}>
-                    {isServerConnected ? 'Stockage: Serveur' : isLocalMode ? 'Stockage: Local (Test)' : 'Erreur Connexion'}
+                <div className={`flex items-center gap-1 ${isServerConnected ? 'text-green-600' : 'text-amber-500'}`}>
+                  {isSyncing ? <Loader2 size={10} className="animate-spin" /> : isServerConnected ? <CloudCheck size={10} /> : <Database size={10} />}
+                  <span className="text-[9px] uppercase font-bold">
+                    {isServerConnected ? 'Connecté au serveur' : 'Mode Local'}
                   </span>
                 </div>
               </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 rounded-xl border border-indigo-100">
+            <User size={14} className="text-indigo-500" />
+            <div className="flex flex-col">
+               <span className="text-[10px] font-black text-indigo-700 uppercase tracking-tighter leading-none">Connecté en tant que</span>
+               <span className="text-xs font-bold text-gray-700 leading-tight">{visitorDisplayName}</span>
             </div>
           </div>
         </header>
@@ -277,40 +242,47 @@ const App: React.FC = () => {
         <main className="flex-grow overflow-hidden relative">
           {view === 'admin' ? (
             <AdminView 
-              knowledgeBase={currentKnowledgeBase}
-              onAddUrl={addUrl}
-              onRemoveUrl={removeUrl}
-              onAddFile={addFile}
-              onRemoveFile={removeFile}
-              onAddText={addText}
-              onRemoveText={removeText}
+              knowledgeBase={currentSession?.knowledgeBase || { urls: [], files: [], rawTexts: [] }}
+              onAddUrl={(url) => updateCurrentSession(s => ({...s, knowledgeBase: {...s.knowledgeBase, urls: [...s.knowledgeBase.urls, url]}}))}
+              onRemoveUrl={(url) => updateCurrentSession(s => ({...s, knowledgeBase: {...s.knowledgeBase, urls: s.knowledgeBase.urls.filter(u => u.url !== url)}}))}
+              onAddFile={(file) => updateCurrentSession(s => ({...s, knowledgeBase: {...s.knowledgeBase, files: [...s.knowledgeBase.files, file]}}))}
+              onRemoveFile={(id) => updateCurrentSession(s => ({...s, knowledgeBase: {...s.knowledgeBase, files: s.knowledgeBase.files.filter(f => f.id !== id)}}))}
+              onAddText={(text) => updateCurrentSession(s => ({...s, knowledgeBase: {...s.knowledgeBase, rawTexts: [...s.knowledgeBase.rawTexts, text]}}))}
+              onRemoveText={(id) => updateCurrentSession(s => ({...s, knowledgeBase: {...s.knowledgeBase, rawTexts: s.knowledgeBase.rawTexts.filter(t => t.id !== id)}}))}
               onGoToChat={() => setView('chat')}
               allChatSessions={allChatSessions}
               activeChatSessionId={activeChatSessionId}
-              onCreateNewChat={createNewChat}
-              onDeleteChat={deleteChat}
-              onAdminSelectChat={handleAdminSelectChat}
+              onCreateNewChat={async (name) => {
+                 const newS: ChatSession = { id: `chat-${Date.now()}`, name, knowledgeBase: {urls:[], files:[], rawTexts:[]}, chatMessages: [], assistantName: 'Bob' };
+                 await apiService.createSession(newS);
+                 setAllChatSessions(p => [...p, newS]);
+                 setActiveChatSessionId(newS.id);
+              }}
+              onDeleteChat={async (id) => {
+                await apiService.deleteSession(id);
+                setAllChatSessions(p => p.filter(s => s.id !== id));
+              }}
+              onAdminSelectChat={(id) => { setActiveChatSessionId(id); }}
             />
           ) : (
-            activeChatSessionId === null ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <Sparkles size={48} className="text-blue-500 mx-auto mb-4" />
-                  <h2 className="text-xl font-bold mb-2">Prêt à commencer ?</h2>
-                  <button onClick={() => setView('admin')} className="text-indigo-600 underline">Créez votre première session</button>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full max-w-5xl mx-auto w-full p-4 md:p-6 flex flex-col">
+            <div className="h-full max-w-5xl mx-auto w-full p-4 flex flex-col">
+              {activeChatSessionId ? (
                 <ChatInterface
-                  messages={currentChatMessages}
-                  onSendMessage={(query) => handleSendMessage(query, activeChatSessionId!)}
+                  messages={filteredChatMessages}
+                  onSendMessage={(q) => handleSendMessage(q, activeChatSessionId)}
                   isLoading={isLoading}
-                  placeholderText="Posez votre question..."
+                  placeholderText={`Posez votre question à ${currentAssistantName}...`}
                   assistantName={currentAssistantName}
                 />
-              </div>
-            )
+              ) : (
+                <div className="h-full flex items-center justify-center text-center opacity-50">
+                  <div>
+                    <Sparkles size={48} className="mx-auto mb-4 text-indigo-400" />
+                    <p>Sélectionnez une session dans la barre latérale</p>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </main>
       </div>

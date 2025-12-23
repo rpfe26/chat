@@ -23,23 +23,35 @@ Assistant pédagogique intelligent basé sur Gemini 3 Flash, avec un backend Nod
 ## 💻 Modes d'Exécution
 
 ### Option A : Mode Fullstack Complet (Production/Stable)
-C'est le mode recommandé pour utiliser l'application avec sauvegarde réelle.
 1. **Compiler le frontend** : `npm run build`
 2. **Lancer le serveur** : `npm run server`
 - Accès : `http://localhost:3000`
 
-### Option B : Mode Développement (Hautement recommandé pour modif)
-Permet de modifier le code en temps réel tout en sauvegardant sur le serveur.
-1. Dans un terminal, lancez le serveur : `npm run server`
-2. Dans un second terminal, lancez vite : `npm run dev`
+### Option B : Mode Développement
+1. Dans un terminal : `npm run server`
+2. Dans un second terminal : `npm run dev`
 - Accès : `http://localhost:5173`
-- *Les appels API seront redirigés automatiquement du port 5173 vers le port 3000.*
+
+## 🌍 Intégration WordPress / CMS
+
+Pour identifier automatiquement vos élèves connectés, ajoutez les paramètres `v_name` et `v_id` à l'URL de l'iframe.
+
+**Exemple de code PHP pour WordPress :**
+```php
+<?php
+$current_user = wp_get_current_user();
+$user_name = urlencode($current_user->display_name);
+$user_id = $current_user->ID;
+$chat_url = "https://votre-site.com/#/embed/ID_SESSION?v_name=$user_name&v_id=$user_id";
+?>
+<iframe src="<?php echo $chat_url; ?>" width="100%" height="600px" frameborder="0"></iframe>
+```
+
+*Note : Les espaces dans le nom sont automatiquement gérés s'ils sont remplacés par des underscores `_` ou encodés.*
 
 ## ⚠️ Dépannage (EADDRINUSE)
-
-Si vous voyez l'erreur `EADDRINUSE`, cela signifie qu'un processus utilise déjà le port. 
-- Pour libérer le port 3000 ou 5173 sur Linux/Mac : `fuser -k 3000/tcp`
-- Sur Windows : `taskkill /F /IM node.exe`
+- Linux/Mac : `fuser -k 3000/tcp`
+- Windows : `taskkill /F /IM node.exe`
 
 ---
 *Propulsé par Google Gemini & React.*

@@ -39,6 +39,7 @@ export interface ChatMessage {
   text: string;
   sender: MessageSender;
   timestamp: Date;
+  visitorId?: string; // ID unique du navigateur de l'élève
   isLoading?: boolean;
   urlContext?: UrlContextMetadataItem[];
 }
@@ -54,7 +55,7 @@ export interface ChatSession {
   name: string;
   knowledgeBase: KnowledgeBase;
   chatMessages: ChatMessage[];
-  assistantName: string; // New: Custom name for the AI assistant
+  assistantName: string;
 }
 
 export type AppView = 'chat' | 'admin';
