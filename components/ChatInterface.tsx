@@ -1,21 +1,20 @@
 
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChatMessage } from '../types'; 
 import MessageItem from './MessageItem';
-import { Send, Sparkles, Settings } from 'lucide-react'; // Ajout de Settings
+import { Send, Sparkles, Settings, ArrowDown } from 'lucide-react';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
-  onSendMessage: (query: string, sessionId?: string) => void; // sessionId is optional as it's passed only in embed mode
+  onSendMessage: (query: string, sessionId?: string) => void;
   isLoading: boolean;
   placeholderText?: string;
-  assistantName: string; // New: Name for the AI assistant
+  assistantName: string;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
@@ -26,27 +25,63 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   assistantName
 }) => {
   const [userQuery, setUserQuery] = useState('');
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastMessageCount = useRef(messages.length);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Fonction pour vérifier si on est en bas
+  const checkScroll = useCallback(() => {
+    if (!containerRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    // On considère qu'on est en bas si on est à moins de 100px du bord réel
+    const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    setIsAtBottom(atBottom);
+    setShowScrollButton(!atBottom && messages.length > 5);
+  }, [messages.length]);
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  useEffect(scrollToBottom, [messages]);
+  // Effet lors de l'arrivée de nouveaux messages
+  useEffect(() => {
+    const isNewMessageFromUser = messages.length > 0 && messages[messages.length - 1].sender === 'user';
+    
+    // On descend automatiquement seulement si :
+    // 1. C'est le premier message
+    // 2. L'utilisateur était déjà en bas
+    // 3. L'utilisateur vient d'envoyer un message (priorité absolue)
+    if (messages.length === 1 || isAtBottom || isNewMessageFromUser) {
+      scrollToBottom(isNewMessageFromUser ? "auto" : "smooth");
+    }
+    
+    lastMessageCount.current = messages.length;
+  }, [messages, isAtBottom]);
 
   const handleSend = () => {
     if (userQuery.trim() && !isLoading) {
       onSendMessage(userQuery.trim());
       setUserQuery('');
+      // On force le scroll immediat après l'envoi
+      setTimeout(() => scrollToBottom("auto"), 50);
     }
   };
 
   const hasKnowledge = placeholderText && !placeholderText.includes("Commencez par ajouter");
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-3xl shadow-lg border border-gray-200 overflow-hidden">
+    <div className="flex flex-col h-full bg-white rounded-3xl shadow-lg border border-gray-200 overflow-hidden relative">
       {/* Zone des messages */}
-      <div className="flex-grow overflow-y-auto chat-container p-6 space-y-2">
+      <div 
+        ref={containerRef}
+        onScroll={checkScroll}
+        className="flex-grow overflow-y-auto chat-container p-6 space-y-2 scroll-smooth"
+      >
         {messages.length === 1 && messages[0].sender === 'system' && messages[0].id === 'welcome-new' && !hasKnowledge ? (
           <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40">
             <Settings size={48} className="text-indigo-500" />
@@ -65,10 +100,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {messages.map((msg) => (
               <MessageItem key={msg.id} message={msg} assistantName={assistantName} />
             ))}
-            <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} className="h-2" />
           </div>
         )}
       </div>
+
+      {/* Bouton de retour rapide en bas (apparaît si on a remonté) */}
+      {showScrollButton && (
+        <button 
+          onClick={() => scrollToBottom()}
+          className="absolute bottom-28 right-10 p-3 bg-indigo-600 text-white rounded-full shadow-xl hover:bg-indigo-700 transition-all animate-in fade-in slide-in-from-bottom-4 z-10"
+          title="Retourner aux derniers messages"
+        >
+          <ArrowDown size={20} />
+        </button>
+      )}
 
       {/* Zone de saisie flottante */}
       <div className="p-6 bg-gradient-to-t from-gray-50 to-transparent">
@@ -103,7 +149,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             )}
           </button>
         </div>
-        {/* Supprimé : Paragraphe "Propulsé par Google Gemini 3 Flash" */}
       </div>
     </div>
   );
