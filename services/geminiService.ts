@@ -1,11 +1,10 @@
 
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { UrlContextMetadataItem, KnowledgeBase } from '../types';
 
 const MODEL_NAME = "gemini-3-flash-preview"; 
@@ -36,7 +35,6 @@ export const generateContentWithUrlContext = async (
 ): Promise<GeminiResponse> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // formattedUrls ne contient plus de mention de crawlWholeSite
   const formattedUrls = kb.urls.length > 0 
     ? kb.urls.map(u => `- ${u.url}`).join('\n') 
     : '- Aucune URL disponible.';
@@ -71,22 +69,19 @@ export const generateContentWithUrlContext = async (
 
   const parts: any[] = [{ text: prompt }];
 
-  // Injection des notes
   if (kb.rawTexts.length > 0) {
     const textContext = kb.rawTexts.map(t => `NOTE PÉDAGOGIQUE [${t.title}]: ${t.content}`).join('\n\n');
     parts.push({ text: `CONNAISSANCE LOCALE :\n${textContext}` });
   }
 
-  // Injection des fichiers
   kb.files.forEach(file => {
-    // Seuls les PDF sont envoyés via inlineData. Les autres types (TXT, DOCX) sont lus en texte clair si possible.
     if (file.type === 'application/pdf') {
       parts.push({ inlineData: { data: file.base64Data, mimeType: 'application/pdf' } });
     } else {
       try {
         parts.push({ text: `CONTENU DU FICHIER ${file.name} :\n${atob(file.base64Data)}` });
       } catch (e) {
-        console.warn(`Erreur de lecture base64 pour le fichier ${file.name}. Il pourrait être corrompu ou d'un format non supporté pour une lecture directe.`);
+        console.warn(`Erreur de lecture base64 pour le fichier ${file.name}.`);
       }
     }
   });
@@ -96,19 +91,21 @@ export const generateContentWithUrlContext = async (
       model: MODEL_NAME,
       contents: [{ role: "user", parts: parts }],
       config: { 
-        // Réintroduction de l'outil googleSearch pour permettre la consultation des URLs spécifiques
         tools: [{ googleSearch: {} }],
         systemInstruction: systemInstruction,
       },
     });
 
-    const text = response.text;
-    // Cette partie du code est pertinente car `groundingChunks` peut maintenant contenir des résultats web.
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    const text = response.text || "Désolé, je n'ai pas pu générer de réponse.";
+    
+    // Safety check on response structure
+    const candidate = response.candidates?.[0];
+    const groundingChunks = candidate?.groundingMetadata?.groundingChunks;
+    
     let extractedUrlContextMetadata: UrlContextMetadataItem[] | undefined = undefined;
 
     if (groundingChunks) {
-      extractedUrlContextMetadata = groundingChunks
+      extractedUrlContextMetadata = (groundingChunks as any[])
         .filter((chunk: any) => chunk.web)
         .map((chunk: any) => ({
           uri: chunk.web.uri,
@@ -118,7 +115,6 @@ export const generateContentWithUrlContext = async (
     
     return { text, urlContextMetadata: extractedUrlContextMetadata };
   } catch (error: any) {
-    // Preserve the original error type if possible for more specific handling upstream
     const err = new Error(formatGeminiError(error));
     if (error.name) {
       err.name = error.name;
@@ -126,5 +122,3 @@ export const generateContentWithUrlContext = async (
     throw err;
   }
 };
-
-// Removed generateAssistantName function
