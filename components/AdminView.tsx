@@ -65,6 +65,17 @@ const AdminView: React.FC<AdminViewProps> = ({
     return currentSession.chatMessages.filter(m => m.visitorId === selectedVisitorFilter || m.sender === MessageSender.SYSTEM);
   }, [currentSession, selectedVisitorFilter]);
 
+  // Handlers pour la navigation automatique
+  const handleSelectChatAndSwitch = (id: string) => {
+    onAdminSelectChat(id);
+    setActiveTab('knowledge');
+  };
+
+  const handleCreateChatAndSwitch = (name: string) => {
+    onCreateNewChat(name);
+    setActiveTab('knowledge');
+  };
+
   // Handlers pour URLs
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,7 +191,13 @@ const AdminView: React.FC<AdminViewProps> = ({
 
         {/* Tab Content */}
         {activeTab === 'sessions' && (
-          <ChatSessionsAdmin allChatSessions={allChatSessions} activeChatSessionId={activeChatSessionId} onCreateNewChat={onCreateNewChat} onDeleteChat={onDeleteChat} onAdminSelectChat={onAdminSelectChat} />
+          <ChatSessionsAdmin 
+            allChatSessions={allChatSessions} 
+            activeChatSessionId={activeChatSessionId} 
+            onCreateNewChat={handleCreateChatAndSwitch} 
+            onDeleteChat={onDeleteChat} 
+            onAdminSelectChat={handleSelectChatAndSwitch} 
+          />
         )}
 
         {activeTab === 'knowledge' && (
