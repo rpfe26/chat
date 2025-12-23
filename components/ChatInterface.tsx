@@ -15,13 +15,15 @@ interface ChatInterfaceProps {
   onSendMessage: (query: string, sessionId?: string) => void; // sessionId is optional as it's passed only in embed mode
   isLoading: boolean;
   placeholderText?: string;
+  assistantName: string; // New: Name for the AI assistant
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
   messages, 
   onSendMessage, 
   isLoading, 
-  placeholderText
+  placeholderText,
+  assistantName
 }) => {
   const [userQuery, setUserQuery] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         ) : (
           <div className="max-w-4xl mx-auto w-full">
             {messages.map((msg) => (
-              <MessageItem key={msg.id} message={msg} />
+              <MessageItem key={msg.id} message={msg} assistantName={assistantName} />
             ))}
             <div ref={messagesEndRef} />
           </div>

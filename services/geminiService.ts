@@ -1,4 +1,5 @@
 
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -35,8 +36,9 @@ export const generateContentWithUrlContext = async (
 ): Promise<GeminiResponse> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  // formattedUrls ne contient plus de mention de crawlWholeSite
   const formattedUrls = kb.urls.length > 0 
-    ? kb.urls.map(u => `- ${u.url} (${u.crawlWholeSite ? 'Site complet' : 'Page seule'})`).join('\n') 
+    ? kb.urls.map(u => `- ${u.url}`).join('\n') 
     : '- Aucune URL disponible.';
   const formattedFiles = kb.files.length > 0 
     ? kb.files.map(f => `- ${f.name}`).join('\n') 
@@ -46,11 +48,9 @@ export const generateContentWithUrlContext = async (
     : '- Aucune note interne.';
 
   const systemInstruction = `Vous êtes un Assistant Pédagogique (PedagoChat). 
-  Votre mission est d'accompagner les élèves de CAP et Bac Pro dans leurs activités, en utilisant **exclusivement** les informations de la base de données fournie. Vous ne devez en aucun cas consulter ou utiliser des informations qui ne proviennent pas explicitement de ces sources.
-  
-  Voici la liste des sources que vous avez à votre disposition :
-  SOURCES WEB :
-  ${formattedUrls}
+  Votre mission est d'accompagner les élèves de CAP et Bac Pro dans leurs activités, en utilisant **exclusivement les informations contenues dans les DOCUMENTS JOINTS, les NOTES PÉDAGOGIQUES INTERNES qui vous sont directement fournies, et le contenu des pages web dont les URL exactes sont listées ci-dessous**.
+
+  Voici la base de connaissances que vous avez à votre disposition :
   
   DOCUMENTS JOINTS :
   ${formattedFiles}
@@ -58,11 +58,14 @@ export const generateContentWithUrlContext = async (
   NOTES PÉDAGOGIQUES INTERNES :
   ${formattedNotes}
 
+  SOURCES WEB (Vous pouvez utiliser un outil de recherche interne *exclusivement* pour récupérer le contenu des URL exactes listées. Vous ne devez pas faire de recherche générale, ni naviguer ou suivre des liens à partir de ces URLs) :
+  ${formattedUrls}
+
   DIRECTIVES DE RÉPONSE :
   - Répondez toujours en Français.
-  - Priorisez **strictement** les informations provenant de ces sources.
-  - Lorsque vous citez des informations, mentionnez toujours la source de manière élégante (par exemple, "Selon le document X...", "D'après la page web Y...", "Dans la note 'Z'...").
-  - Si une information n'est pas trouvée dans les sources fournies, indiquez-le clairement par une phrase comme "Je n'ai pas trouvé cette information dans ma base de connaissances." ou "Mes sources ne contiennent pas cette donnée." **Ne tentez pas de générer une réponse basée sur des connaissances générales ou externes.**
+  - Priorisez **strictement** les informations provenant des DOCUMENTS JOINTS, des NOTES PÉDAGOGIQUES INTERNES, et du contenu des URLs web que vous avez pu consulter.
+  - Lorsque vous citez des informations, mentionnez toujours la source de manière élégante (par exemple, "Selon le document X...", "D'après la note 'Z'...", "Sur la page web Y...").
+  - Si une information n'est pas trouvée dans les sources (documents, notes, et contenu des URLs *spécifiques* consultées), indiquez-le clairement par une phrase comme "Je n'ai pas trouvé cette information dans ma base de connaissances." ou "Mes sources ne contiennent pas cette donnée." **Ne tentez pas de générer une réponse basée sur des connaissances générales ou externes.**
   - Adaptez votre vocabulaire pour être clair et accessible à des élèves de niveau CAP et Bac Pro.
   - Fournissez des réponses concises et directes, évitant les digressions.`;
 
@@ -93,14 +96,14 @@ export const generateContentWithUrlContext = async (
       model: MODEL_NAME,
       contents: [{ role: "user", parts: parts }],
       config: { 
-        // L'outil googleSearch a été retiré pour respecter la consigne de ne consulter que la base de données interne.
+        // Réintroduction de l'outil googleSearch pour permettre la consultation des URLs spécifiques
+        tools: [{ googleSearch: {} }],
         systemInstruction: systemInstruction,
       },
     });
 
     const text = response.text;
-    // Même si groundingChunks pourrait potentiellement exister pour d'autres modèles,
-    // sans l'outil googleSearch, il ne devrait pas y avoir de liens web issus d'une recherche.
+    // Cette partie du code est pertinente car `groundingChunks` peut maintenant contenir des résultats web.
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     let extractedUrlContextMetadata: UrlContextMetadataItem[] | undefined = undefined;
 
@@ -123,3 +126,5 @@ export const generateContentWithUrlContext = async (
     throw err;
   }
 };
+
+// Removed generateAssistantName function

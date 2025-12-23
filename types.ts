@@ -12,7 +12,6 @@ export enum MessageSender {
 
 export interface UrlItem {
   url: string;
-  crawlWholeSite: boolean;
 }
 
 export interface UrlContextMetadataItem {
@@ -55,6 +54,7 @@ export interface ChatSession {
   name: string;
   knowledgeBase: KnowledgeBase;
   chatMessages: ChatMessage[];
+  assistantName: string; // New: Custom name for the AI assistant
 }
 
 export type AppView = 'chat' | 'admin';

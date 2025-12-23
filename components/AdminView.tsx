@@ -16,7 +16,7 @@ import ChatSessionsAdmin from './ChatSessionsAdmin'; // Nouveau composant pour l
 
 interface AdminViewProps {
   // Props pour la gestion de la base de connaissances (session active)
-  knowledgeBase: KnowledgeBase;
+  knowledgeBase: KnowledgeBase; // Used to derive initial assistantName
   onAddUrl: (item: UrlItem) => void;
   onRemoveUrl: (url: string) => void;
   onAddFile: (file: KnowledgeFile) => void;
@@ -39,6 +39,10 @@ const AdminView: React.FC<AdminViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'sessions' | 'knowledge'>('sessions');
 
+  // const currentSession = allChatSessions.find(s => s.id === activeChatSessionId); // No longer needed for assistant name
+
+  // State for assistant name removed
+
   // Met à jour l'onglet actif lorsque la session active change
   useEffect(() => {
     if (activeChatSessionId && activeTab !== 'knowledge') {
@@ -51,8 +55,11 @@ const AdminView: React.FC<AdminViewProps> = ({
     }
   }, [activeChatSessionId]); // activeTab n'est pas une dépendance ici pour éviter une boucle infinie ou un comportement non désiré.
 
+  // Update tempAssistantName when activeChatSessionId changes removed
+
+
   const [urlInput, setUrlInput] = useState('');
-  const [crawlWhole, setCrawlWhole] = useState(false);
+  // const [crawlWhole, setCrawlWhole] = useState(false); // Removed as per user request
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -60,9 +67,9 @@ const AdminView: React.FC<AdminViewProps> = ({
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!urlInput.trim()) return;
-    onAddUrl({ url: urlInput.trim(), crawlWholeSite: crawlWhole });
+    onAddUrl({ url: urlInput.trim() /*, crawlWholeSite: crawlWhole*/ }); // crawlWholeSite removed
     setUrlInput('');
-    setCrawlWhole(false);
+    // setCrawlWhole(false); // Removed as per user request
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,6 +102,8 @@ const AdminView: React.FC<AdminViewProps> = ({
     setNoteTitle('');
     setNoteContent('');
   };
+
+  // handleSaveAssistantName removed
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -166,7 +175,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                 <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700">
                   <Globe size={20} />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Portail Web</h3>
+                <h3 className="text-lg font-bold text-gray-900">Portail Web (Références uniquement)</h3>
               </div>
 
               <form onSubmit={handleUrlSubmit} className="space-y-4">
@@ -180,37 +189,26 @@ const AdminView: React.FC<AdminViewProps> = ({
                   />
                   <Search className="absolute left-4 top-4 text-gray-400" size={18} />
                 </div>
-                <label className="flex items-center gap-3 p-4 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200 transition-colors border border-gray-200">
-                  <input 
-                    type="checkbox" 
-                    checked={crawlWhole}
-                    onChange={(e) => setCrawlWhole(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 bg-transparent text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-gray-800">Indexation complète</span>
-                    <span className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Parcourir tout le domaine</span>
-                  </div>
-                </label>
+                {/* Checkbox "Indexation complète" retirée */}
                 <button 
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-md shadow-blue-600/40 transition-all active:scale-95"
                   disabled={!urlInput.trim()}
                 >
-                  <Plus size={18} /> Ajouter la source
+                  <Plus size={18} /> Ajouter la référence
                 </button>
               </form>
 
               <div className="pt-4 space-y-2 max-h-[400px] overflow-y-auto chat-container pr-2">
                 {knowledgeBase.urls.length === 0 && (
-                  <p className="text-center text-gray-500 py-4 text-xs">Aucune source web ajoutée pour cette session.</p>
+                  <p className="text-center text-gray-500 py-4 text-xs">Aucune référence web ajoutée pour cette session.</p>
                 )}
                 {knowledgeBase.urls.map((item, idx) => (
                   <div key={idx} className="group flex items-center justify-between p-4 bg-gray-100 border border-gray-200 rounded-2xl hover:border-gray-300 transition-all">
                     <div className="flex flex-col truncate pr-4">
                       <span className="text-xs font-bold text-gray-800 truncate">{item.url}</span>
                       <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-1">
-                        {item.crawlWholeSite ? 'Domaine Indexé' : 'Lien unique'}
-                      </span>
+                        Référence URL
+                      </span> {/* Simplifié */}
                     </div>
                     <button onClick={() => onRemoveUrl(item.url)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
                       <Trash2 size={16} />
@@ -270,56 +268,57 @@ const AdminView: React.FC<AdminViewProps> = ({
               </div>
             </section>
 
-            {/* COLONNE 3: NOTES / TEXTE */}
-            <section className="space-y-6 bg-white p-6 rounded-3xl border border-gray-200 shadow-lg">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">
-                  <Type size={20} />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Notes Pédagogiques</h3>
-              </div>
-
-              <div className="space-y-4">
-                <input 
-                  placeholder="Titre de la leçon ou note..."
-                  value={noteTitle}
-                  onChange={(e) => setNoteTitle(e.target.value)}
-                  className="w-full bg-gray-100 border border-gray-300 rounded-2xl p-4 text-sm focus:border-amber-500 outline-none transition-all text-gray-900 placeholder-gray-500"
-                />
-                <textarea 
-                  placeholder="Contenu brut de la connaissance..."
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  rows={5}
-                  className="w-full bg-gray-100 border border-gray-300 rounded-2xl p-4 text-sm focus:border-amber-500 outline-none resize-none transition-all text-gray-900 placeholder-gray-500"
-                />
-                <button 
-                  onClick={handleTextSubmit}
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-md shadow-amber-600/40 transition-all active:scale-95"
-                  disabled={!noteTitle.trim() || !noteContent.trim()}
-                >
-                  <Save size={18} /> Enregistrer la note
-                </button>
-              </div>
-
-              <div className="pt-4 space-y-2 max-h-[300px] overflow-y-auto chat-container pr-2">
-                {knowledgeBase.rawTexts.length === 0 && (
-                  <p className="text-center text-gray-500 py-4 text-xs">Aucune note ajoutée pour cette session.</p>
-                )}
-                {knowledgeBase.rawTexts.map((text) => (
-                  <div key={text.id} className="group p-4 bg-gray-100 border border-gray-200 rounded-2xl relative overflow-hidden">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-amber-700 truncate pr-8">{text.title}</span>
-                      <button onClick={() => onRemoveText(text.id)} className="p-2 text-gray-400 hover:text-red-600 transition-all">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-gray-600 line-clamp-2 leading-relaxed">{text.content}</p>
+            {/* COLONNE 3: NOTES / TEXTE et Paramètres de l'Assistant */}
+            <div className="flex flex-col gap-8">
+              <section className="space-y-6 bg-white p-6 rounded-3xl border border-gray-200 shadow-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">
+                    <Type size={20} />
                   </div>
-                ))}
-              </div>
-            </section>
+                  <h3 className="text-lg font-bold text-gray-900">Notes Pédagogiques</h3>
+                </div>
 
+                <div className="space-y-4">
+                  <input 
+                    placeholder="Titre de la leçon ou note..."
+                    value={noteTitle}
+                    onChange={(e) => setNoteTitle(e.target.value)}
+                    className="w-full bg-gray-100 border border-gray-300 rounded-2xl p-4 text-sm focus:border-amber-500 outline-none transition-all text-gray-900 placeholder-gray-500"
+                  />
+                  <textarea 
+                    placeholder="Contenu brut de la connaissance..."
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    rows={5}
+                    className="w-full bg-gray-100 border border-gray-300 rounded-2xl p-4 text-sm focus:border-amber-500 outline-none resize-none transition-all text-gray-900 placeholder-gray-500"
+                  />
+                  <button 
+                    onClick={handleTextSubmit}
+                    className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-md shadow-amber-600/40 transition-all active:scale-95"
+                    disabled={!noteTitle.trim() || !noteContent.trim()}
+                  >
+                    <Save size={18} /> Enregistrer la note
+                  </button>
+                </div>
+
+                <div className="pt-4 space-y-2 max-h-[300px] overflow-y-auto chat-container pr-2">
+                  {knowledgeBase.rawTexts.length === 0 && (
+                    <p className="text-center text-gray-500 py-4 text-xs">Aucune note ajoutée pour cette session.</p>
+                  )}
+                  {knowledgeBase.rawTexts.map((text) => (
+                    <div key={text.id} className="group p-4 bg-gray-100 border border-gray-200 rounded-2xl relative overflow-hidden">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-amber-700 truncate pr-8">{text.title}</span>
+                        <button onClick={() => onRemoveText(text.id)} className="p-2 text-gray-400 hover:text-red-600 transition-all">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-gray-600 line-clamp-2 leading-relaxed">{text.content}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
           </div>
         )}
 

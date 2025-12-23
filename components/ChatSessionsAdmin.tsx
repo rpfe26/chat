@@ -6,14 +6,15 @@
 
 import React, { useState } from 'react';
 import { ChatSession } from '../types';
-import { Plus, MessageSquare, CheckCircle, Trash2, Sparkles, FolderOpen, Share2, X, Copy } from 'lucide-react'; // Import de FolderOpen, Share2, X, Copy
+import { Plus, MessageSquare, CheckCircle, Trash2, Sparkles, FolderOpen, Share2, X, Copy, AlertTriangle, Database, Cloud } from 'lucide-react'; 
+import { apiService } from '../services/apiService';
 
 interface ChatSessionsAdminProps {
   allChatSessions: ChatSession[];
   activeChatSessionId: string | null;
   onDeleteChat: (id: string) => void;
   onCreateNewChat: (name: string) => void;
-  onAdminSelectChat: (id: string) => void; // Nouvelle prop
+  onAdminSelectChat: (id: string) => void;
 }
 
 const ChatSessionsAdmin: React.FC<ChatSessionsAdminProps> = ({
@@ -39,10 +40,11 @@ const ChatSessionsAdmin: React.FC<ChatSessionsAdminProps> = ({
   };
 
   const currentEmbedUrl = currentEmbedSessionId 
-    ? `${window.location.origin}/#/embed/${currentEmbedSessionId}`
+    ? `${window.location.href.split('#')[0]}#/embed/${currentEmbedSessionId}`
     : '';
 
   const iframeCode = `<iframe src="${currentEmbedUrl}" width="600" height="400" frameborder="0" allowfullscreen></iframe>`;
+  const isLocalMode = apiService.isLocalMode();
 
   return (
     <section className="space-y-6 bg-white p-6 rounded-3xl border border-gray-200 shadow-lg">
@@ -75,7 +77,7 @@ const ChatSessionsAdmin: React.FC<ChatSessionsAdminProps> = ({
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-500 py-8">
             <Sparkles size={32} className="text-blue-400 mb-3" />
             <p className="text-sm font-medium">Aucune session de chat existante.</p>
-            <p className="text-xs mt-1">Créez-en une pour commencer !</p>
+            <p className="text-xs mt-1">Créez-en une pour commencer ! {isLocalMode && "(Mode Test Local)"}</p>
           </div>
         ) : (
           allChatSessions.map((session) => (
@@ -119,7 +121,6 @@ const ChatSessionsAdmin: React.FC<ChatSessionsAdminProps> = ({
         )}
       </div>
 
-      {/* Embed Modal */}
       {showEmbedModal && currentEmbedSessionId && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
           <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-lg w-full relative">
@@ -130,7 +131,7 @@ const ChatSessionsAdmin: React.FC<ChatSessionsAdminProps> = ({
               <X size={20} />
             </button>
             <h4 className="text-xl font-bold text-gray-900 mb-4">Code d'Intégration du Chat</h4>
-            <p className="text-gray-700 mb-4 text-sm">Utilisez ce code pour intégrer cette session de chat sur votre site web.</p>
+            <p className="text-gray-700 mb-4 text-sm">Utilisez ce code pour intégrer cette session sur votre site web.</p>
             
             <label className="block text-sm font-bold text-gray-700 mb-2">Lien direct:</label>
             <div className="relative mb-4">
@@ -149,7 +150,7 @@ const ChatSessionsAdmin: React.FC<ChatSessionsAdminProps> = ({
             </div>
             
             <label className="block text-sm font-bold text-gray-700 mb-2">Code Iframe:</label>
-            <div className="relative">
+            <div className="relative mb-4">
               <textarea
                 readOnly
                 value={iframeCode}
@@ -163,9 +164,24 @@ const ChatSessionsAdmin: React.FC<ChatSessionsAdminProps> = ({
                 <Copy size={16} />
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-4 leading-relaxed">
-              Note: La page intégrée affichera uniquement l'interface de chat sans la barre latérale ni l'en-tête de l'application principale. Vous pouvez ajuster les attributs `width` et `height` de l'iframe.
-            </p>
+
+            <div className={`p-4 rounded-2xl flex gap-3 items-start text-xs leading-relaxed border ${
+              isLocalMode 
+                ? 'bg-amber-50 border-amber-200 text-amber-800' 
+                : 'bg-green-50 border-green-200 text-green-800'
+            }`}>
+              {isLocalMode ? <AlertTriangle size={18} className="shrink-0" /> : <Cloud size={18} className="shrink-0" />}
+              <div>
+                <span className="font-bold uppercase block mb-1">
+                  {isLocalMode ? "Attention : Mode Local Actif" : "Information : Mode Serveur Actif"}
+                </span>
+                {isLocalMode ? (
+                  "L'application tourne en mode test (localStorage). L'iframe ne fonctionnera pas s'il est intégré sur un autre domaine car les données ne sont pas partagées. Lancez le serveur Node.js pour un fonctionnement universel."
+                ) : (
+                  "L'application est connectée au serveur. Les données intégrées via l'iframe seront accessibles de n'importe où tant que votre serveur est en ligne."
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

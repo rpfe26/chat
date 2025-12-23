@@ -21,6 +21,7 @@ marked.setOptions({
 
 interface MessageItemProps {
   message: ChatMessage;
+  assistantName: string; // New: Name for the AI assistant
 }
 
 const getYoutubeId = (url: string) => {
@@ -63,21 +64,34 @@ const VideoEmbed: React.FC<{ url: string }> = ({ url }) => {
   return null;
 };
 
-const SenderAvatar: React.FC<{ sender: MessageSender }> = ({ sender }) => {
+// Modified SenderAvatar to use assistantName
+const SenderAvatar: React.FC<{ sender: MessageSender; assistantName: string }> = ({ sender, assistantName }) => {
   const isUser = sender === MessageSender.USER;
   const isAI = sender === MessageSender.MODEL;
   const isSystem = sender === MessageSender.SYSTEM;
   
+  let label = '';
+  let bgColor = '';
+
+  if (isUser) {
+    label = 'MOI';
+    bgColor = 'bg-blue-600 text-white';
+  } else if (isAI) {
+    label = assistantName; // Use the custom assistant name
+    bgColor = 'bg-indigo-600 text-white';
+  } else { // isSystem
+    label = 'SYS';
+    bgColor = 'bg-red-100 text-red-700';
+  }
+
   return (
-    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black tracking-tighter shrink-0 shadow-md ${
-      isUser ? 'bg-blue-600 text-white' : isAI ? 'bg-indigo-600 text-white' : 'bg-red-100 text-red-700'
-    }`}>
-      {isUser ? 'MOI' : isAI ? 'IA' : 'SYS'}
+    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black tracking-tighter shrink-0 shadow-md ${bgColor}`}>
+      {label}
     </div>
   );
 };
 
-const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
+const MessageItem: React.FC<MessageItemProps> = ({ message, assistantName }) => {
   const isUser = message.sender === MessageSender.USER;
   const isModel = message.sender === MessageSender.MODEL;
   const isSystem = message.sender === MessageSender.SYSTEM;
@@ -114,7 +128,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
   return (
     <div className={`flex mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex items-start gap-3 max-w-[90%] md:max-w-[80%]`}>
-        {!isUser && <SenderAvatar sender={message.sender} />}
+        {!isUser && <SenderAvatar sender={message.sender} assistantName={assistantName} />}
         <div className={`p-4 rounded-2xl shadow-md transition-all ${
           isUser 
             ? 'bg-blue-50 border border-blue-200 rounded-tr-none' 
@@ -156,7 +170,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
             </div>
           )}
         </div>
-        {isUser && <SenderAvatar sender={message.sender} />}
+        {isUser && <SenderAvatar sender={message.sender} assistantName={assistantName} />}
       </div>
     </div>
   );
