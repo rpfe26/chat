@@ -11,7 +11,8 @@ const __dirname = path.dirname(__filename);
 const DB_PATH = path.join(__dirname, 'db.json');
 
 const app = express();
-const PORT = process.env.PORT || 5173;
+// Changement du port par défaut à 3000 pour éviter le conflit avec le port 5173 de Vite
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
@@ -74,10 +75,10 @@ app.get('*', (req, res) => {
   if (fs.existsSync(path.join(__dirname, 'dist', 'index.html'))) {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   } else {
-    res.send('Serveur en cours d\'exécution. Veuillez construire le frontend (npm run build).');
+    res.send('Serveur API PedagoChat en ligne. Accédez à l\'application via le port de build ou de dev.');
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Serveur PedagoChat lancé sur http://localhost:${PORT}`);
+  console.log(`🚀 Serveur PedagoChat lancé sur http://localhost:${PORT}`);
 });

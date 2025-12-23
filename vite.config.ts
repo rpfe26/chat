@@ -4,17 +4,22 @@ import react from '@vitejs/plugin-react';
 import process from 'node:process';
 
 export default defineConfig(({ mode }) => {
-  // Charge les variables d'environnement du dossier racine, peu importe le préfixe
   const env = loadEnv(mode, process.cwd(), '');
   
   return {
     plugins: [react()],
     server: {
       host: true,
-      port: 5173
+      port: 5173,
+      proxy: {
+        // Redirige les appels /api vers le serveur Express tournant sur le port 3000
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        }
+      }
     },
     define: {
-      // Injection de la clé API pour qu'elle soit accessible via process.env.API_KEY
       'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY)
     }
   };
