@@ -1,5 +1,4 @@
 
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -12,8 +11,8 @@ import { ChatMessage, MessageSender } from '../types';
 import { Video, ExternalLink, PlayCircle, AlertTriangle } from 'lucide-react';
 
 marked.setOptions({
-  highlight: function(code, lang) {
-    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+  highlight: function(code: string, lang: string) {
+    const language = (lang && hljs.getLanguage(lang)) ? lang : 'plaintext';
     return hljs.highlight(code, { language }).value;
   },
   langPrefix: 'hljs language-',
@@ -68,7 +67,6 @@ const VideoEmbed: React.FC<{ url: string }> = ({ url }) => {
 const SenderAvatar: React.FC<{ sender: MessageSender; assistantName: string }> = ({ sender, assistantName }) => {
   const isUser = sender === MessageSender.USER;
   const isAI = sender === MessageSender.MODEL;
-  const isSystem = sender === MessageSender.SYSTEM;
   
   let label = '';
   let bgColor = '';
