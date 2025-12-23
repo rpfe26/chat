@@ -11,10 +11,15 @@ import { apiService } from './services/apiService';
 import ChatInterface from './components/ChatInterface';
 import AdminView from './components/AdminView';
 import Sidebar from './components/Sidebar';
-import { Settings, GraduationCap, CloudCheck, CloudOff, Sparkles, Loader2, Database, User } from 'lucide-react';
+import { GraduationCap, CloudCheck, Sparkles, Loader2, Database, User, ShieldCheck, Lock } from 'lucide-react';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('chat');
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginForm, setLoginForm] = useState({ id: '', mdp: '' });
+  const [loginError, setLoginError] = useState('');
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [isServerConnected, setIsServerConnected] = useState(false);
   const [isLocalMode, setIsLocalMode] = useState(false);
@@ -28,8 +33,8 @@ const App: React.FC = () => {
   // Récupération de l'identité via URL (WordPress) ou LocalStorage
   const { visitorId, visitorDisplayName } = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlName = params.get('v_name'); // ex: Jean_Dupont
-    const urlId = params.get('v_id');     // ex: wp_user_45
+    const urlName = params.get('v_name');
+    const urlId = params.get('v_id');
 
     if (urlId && urlName) {
       const decodedName = decodeURIComponent(urlName).replace(/_/g, ' ');
@@ -48,10 +53,13 @@ const App: React.FC = () => {
   const [embedSessionId, setEmbedSessionId] = useState<string | null>(null);
 
   useEffect(() => {
+    // Vérifier si déjà connecté en admin
+    const authStatus = sessionStorage.getItem('pedagochat_admin_auth');
+    if (authStatus === 'true') setIsAdminLoggedIn(true);
+
     const handleHashChange = () => {
       const hash = window.location.hash;
       const embedMatch = hash.match(/^#\/embed\/(.+)$/);
-      // Correction pour ignorer les query params dans le hash match
       if (embedMatch && embedMatch[1]) {
         const idPart = embedMatch[1].split('?')[0];
         setEmbedMode(true);
@@ -173,6 +181,25 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginForm.id === 'admin' && loginForm.mdp === 'admin') {
+      setIsAdminLoggedIn(true);
+      sessionStorage.setItem('pedagochat_admin_auth', 'true');
+      setShowLogin(false);
+      setView('admin');
+      setLoginError('');
+    } else {
+      setLoginError('Identifiants invalides');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAdminLoggedIn(false);
+    sessionStorage.removeItem('pedagochat_admin_auth');
+    setView('chat');
+  };
+
   if (isInitialLoading) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 text-indigo-600">
@@ -202,10 +229,12 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen bg-gray-50 text-gray-900 flex font-sans">
+    <div className="h-screen bg-gray-50 text-gray-900 flex font-sans overflow-hidden">
       <Sidebar
-        onGoToAdmin={() => setView('admin')}
+        onGoToAdmin={() => isAdminLoggedIn ? setView('admin') : setShowLogin(true)}
         onGoToChat={() => setView('chat')}
+        onLogout={handleLogout}
+        isAdmin={isAdminLoggedIn}
         currentView={view}
         allChatSessions={allChatSessions}
         activeChatSessionId={activeChatSessionId}
@@ -230,17 +259,22 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 rounded-xl border border-indigo-100">
-            <User size={14} className="text-indigo-500" />
+          
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${isAdminLoggedIn ? 'bg-purple-50 border-purple-100' : 'bg-indigo-50 border-indigo-100'}`}>
+            {isAdminLoggedIn ? <ShieldCheck size={14} className="text-purple-500" /> : <User size={14} className="text-indigo-500" />}
             <div className="flex flex-col">
-               <span className="text-[10px] font-black text-indigo-700 uppercase tracking-tighter leading-none">Connecté en tant que</span>
-               <span className="text-xs font-bold text-gray-700 leading-tight">{visitorDisplayName}</span>
+               <span className={`text-[10px] font-black uppercase tracking-tighter leading-none ${isAdminLoggedIn ? 'text-purple-700' : 'text-indigo-700'}`}>
+                 {isAdminLoggedIn ? 'Rôle : Administrateur' : 'Connecté en tant que'}
+               </span>
+               <span className="text-xs font-bold text-gray-700 leading-tight">
+                 {isAdminLoggedIn ? 'Administrateur' : visitorDisplayName}
+               </span>
             </div>
           </div>
         </header>
 
         <main className="flex-grow overflow-hidden relative">
-          {view === 'admin' ? (
+          {view === 'admin' && isAdminLoggedIn ? (
             <AdminView 
               knowledgeBase={currentSession?.knowledgeBase || { urls: [], files: [], rawTexts: [] }}
               onAddUrl={(url) => updateCurrentSession(s => ({...s, knowledgeBase: {...s.knowledgeBase, urls: [...s.knowledgeBase.urls, url]}}))}
@@ -286,6 +320,61 @@ const App: React.FC = () => {
           )}
         </main>
       </div>
+
+      {/* Modal Login */}
+      {showLogin && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-sm w-full animate-in zoom-in duration-300">
+            <div className="flex flex-col items-center text-center mb-8">
+              <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 mb-4">
+                <Lock size={32} />
+              </div>
+              <h2 className="text-2xl font-black text-gray-900 tracking-tight">Espace Admin</h2>
+              <p className="text-gray-500 text-sm">Veuillez vous authentifier</p>
+            </div>
+            
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 ml-1">Identifiant</label>
+                <input 
+                  type="text" 
+                  autoFocus
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none transition-all"
+                  value={loginForm.id}
+                  onChange={e => setLoginForm({...loginForm, id: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 ml-1">Mot de passe</label>
+                <input 
+                  type="password" 
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none transition-all"
+                  value={loginForm.mdp}
+                  onChange={e => setLoginForm({...loginForm, mdp: e.target.value})}
+                />
+              </div>
+              
+              {loginError && <p className="text-red-500 text-[10px] font-bold text-center">{loginError}</p>}
+              
+              <div className="flex gap-3 pt-2">
+                <button 
+                  type="button"
+                  onClick={() => setShowLogin(false)}
+                  className="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-xl text-xs transition-all"
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+                >
+                  Connexion
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
