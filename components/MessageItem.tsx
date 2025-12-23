@@ -63,7 +63,6 @@ const VideoEmbed: React.FC<{ url: string }> = ({ url }) => {
   return null;
 };
 
-// Modified SenderAvatar to use assistantName
 const SenderAvatar: React.FC<{ sender: MessageSender; assistantName: string }> = ({ sender, assistantName }) => {
   const isUser = sender === MessageSender.USER;
   const isAI = sender === MessageSender.MODEL;
@@ -73,10 +72,10 @@ const SenderAvatar: React.FC<{ sender: MessageSender; assistantName: string }> =
 
   if (isUser) {
     label = 'MOI';
-    bgColor = 'bg-blue-600 text-white';
+    bgColor = 'bg-indigo-700 text-white';
   } else if (isAI) {
-    label = assistantName; // Use the custom assistant name
-    bgColor = 'bg-indigo-600 text-white';
+    label = assistantName; 
+    bgColor = 'bg-blue-600 text-white';
   } else { // isSystem
     label = 'SYS';
     bgColor = 'bg-red-100 text-red-700';
@@ -120,21 +119,25 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, assistantName }) => 
       );
     }
     
-    return <div className={`whitespace-pre-wrap text-sm leading-relaxed ${isUser ? 'text-white' : 'text-gray-900'}`}>{message.text}</div>;
+    return (
+      <div className={`whitespace-pre-wrap text-sm leading-relaxed font-medium ${isUser ? 'text-white' : 'text-gray-900'}`}>
+        {message.text}
+      </div>
+    );
   };
   
   return (
     <div className={`flex mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex items-start gap-3 max-w-[90%] md:max-w-[80%]`}>
         {!isUser && <SenderAvatar sender={message.sender} assistantName={assistantName} />}
-        <div className={`p-4 rounded-2xl shadow-md transition-all ${
+        <div className={`p-4 rounded-2xl shadow-sm transition-all ${
           isUser 
-            ? 'bg-blue-50 border border-blue-200 rounded-tr-none' 
+            ? 'bg-indigo-600 border border-indigo-700 rounded-tr-none shadow-indigo-100' 
             : isModel 
               ? 'bg-gray-100 border border-gray-200 rounded-tl-none'
               : message.text.includes("QUOTA_EXCEEDED") 
                 ? 'bg-amber-50 border border-amber-200 rounded-tl-none'
-                : 'bg-gray-100 border border-gray-200 rounded-tl-none' // Fallback for other system messages
+                : 'bg-gray-100 border border-gray-200 rounded-tl-none'
         }`}>
           {message.isLoading ? (
             <div className="flex items-center gap-2 py-1">
