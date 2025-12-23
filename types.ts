@@ -10,9 +10,29 @@ export enum MessageSender {
   SYSTEM = 'system',
 }
 
+export interface UrlItem {
+  url: string;
+  crawlWholeSite: boolean;
+}
+
 export interface UrlContextMetadataItem {
   uri: string;
   title?: string;
+}
+
+export interface KnowledgeFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  base64Data: string;
+}
+
+export interface KnowledgeText {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
 }
 
 export interface ChatMessage {
@@ -24,8 +44,17 @@ export interface ChatMessage {
   urlContext?: UrlContextMetadataItem[];
 }
 
-export interface URLGroup {
+export interface KnowledgeBase {
+  urls: UrlItem[];
+  files: KnowledgeFile[];
+  rawTexts: KnowledgeText[];
+}
+
+export interface ChatSession {
   id: string;
   name: string;
-  urls: string[];
+  knowledgeBase: KnowledgeBase;
+  chatMessages: ChatMessage[];
 }
+
+export type AppView = 'chat' | 'admin';

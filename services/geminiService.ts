@@ -5,9 +5,8 @@
 */
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { UrlContextMetadataItem } from '../types';
+import { UrlContextMetadataItem, KnowledgeBase } from '../types';
 
-// Use gemini-3-flash-preview for documentation analysis and search grounding tasks
 const MODEL_NAME = "gemini-3-flash-preview"; 
 
 interface GeminiResponse {
@@ -15,42 +14,93 @@ interface GeminiResponse {
   urlContextMetadata?: UrlContextMetadataItem[];
 }
 
+const formatGeminiError = (error: any): string => {
+  console.error("Détails Erreur Gemini:", error);
+  let errorMessage = error?.message || "";
+
+  // Check for more specific error messages from the API response
+  if (error?.response?.error?.message) {
+    errorMessage = error.response.error.message;
+  }
+
+  if (errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
+    return "QUOTA_EXCEEDED: Limite de requêtes atteinte. Attendez 60s.";
+  }
+  return errorMessage || "Erreur de connexion à l'IA.";
+};
+
 export const generateContentWithUrlContext = async (
   prompt: string,
-  urls: string[]
+  kb: KnowledgeBase
 ): Promise<GeminiResponse> => {
-  // Initialize AI client using the API key from environment variables
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const systemInstruction = `Vous êtes un Assistant de Connaissances spécialisé capable de parcourir la documentation et d'analyser le contenu vidéo via les URLs fournies. 
-  Répondez TOUJOURS en Français.
-  Utilisez l'outil googleSearch pour vérifier et enrichir vos réponses avec des informations à jour si nécessaire.
-  Répondez précisément aux questions en combinant les informations des documents textuels et des ressources vidéo mentionnées. 
-  Si vous faites référence à une ressource, mentionnez son titre et fournissez le lien.`;
+  const formattedUrls = kb.urls.length > 0 
+    ? kb.urls.map(u => `- ${u.url} (${u.crawlWholeSite ? 'Site complet' : 'Page seule'})`).join('\n') 
+    : '- Aucune URL disponible.';
+  const formattedFiles = kb.files.length > 0 
+    ? kb.files.map(f => `- ${f.name}`).join('\n') 
+    : '- Aucun document joint.';
+  const formattedNotes = kb.rawTexts.length > 0 
+    ? kb.rawTexts.map(t => `- ${t.title}`).join('\n') 
+    : '- Aucune note interne.';
 
-  let fullPrompt = prompt;
-  if (urls.length > 0) {
-    const urlList = urls.join('\n');
-    fullPrompt = `${prompt}\n\nContexte (URLs de documentation et vidéos à consulter en priorité) :\n${urlList}`;
+  const systemInstruction = `Vous êtes un Assistant Pédagogique (PedagoChat). 
+  Votre mission est d'aider l'utilisateur à naviguer dans sa base de données personnelle de connaissances.
+  
+  Voici la liste des sources que vous avez à votre disposition :
+  SOURCES WEB :
+  ${formattedUrls}
+  
+  DOCUMENTS JOINTS :
+  ${formattedFiles}
+  
+  NOTES PÉDAGOGIQUES INTERNES :
+  ${formattedNotes}
+
+  DIRECTIVES DE RÉPONSE :
+  - Répondez toujours en Français.
+  - Priorisez les informations provenant de ces sources.
+  - Si une URL est marquée "Site complet", utilisez l'outil de recherche Google PRIORITAIREMENT pour trouver des informations profondes sur ce domaine spécifique en lien avec la question de l'utilisateur.
+  - Lorsque vous citez des informations, mentionnez toujours la source de manière élégante (par exemple, "Selon le document X...", "D'après la page web Y...", "Dans la note 'Z'...").
+  - Si une information n'est pas trouvée dans les sources fournies, indiquez clairement que les données ne sont pas présentes dans la base de connaissances avant de proposer une recherche générale ou d'indiquer une limitation.`;
+
+  const parts: any[] = [{ text: prompt }];
+
+  // Injection des notes
+  if (kb.rawTexts.length > 0) {
+    const textContext = kb.rawTexts.map(t => `NOTE PÉDAGOGIQUE [${t.title}]: ${t.content}`).join('\n\n');
+    parts.push({ text: `CONNAISSANCE LOCALE :\n${textContext}` });
   }
+
+  // Injection des fichiers
+  kb.files.forEach(file => {
+    // Seuls les PDF sont envoyés via inlineData. Les autres types (TXT, DOCX) sont lus en texte clair si possible.
+    if (file.type === 'application/pdf') {
+      parts.push({ inlineData: { data: file.base64Data, mimeType: 'application/pdf' } });
+    } else {
+      try {
+        parts.push({ text: `CONTENU DU FICHIER ${file.name} :\n${atob(file.base64Data)}` });
+      } catch (e) {
+        console.warn(`Erreur de lecture base64 pour le fichier ${file.name}. Il pourrait être corrompu ou d'un format non supporté pour une lecture directe.`);
+      }
+    }
+  });
 
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: MODEL_NAME,
-      contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+      contents: [{ role: "user", parts: parts }],
       config: { 
-        // Use googleSearch tool for grounding as specified in guidelines
         tools: [{ googleSearch: {} }],
         systemInstruction: systemInstruction,
       },
     });
 
     const text = response.text;
-    const candidate = response.candidates?.[0];
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     let extractedUrlContextMetadata: UrlContextMetadataItem[] | undefined = undefined;
 
-    // Correctly extract grounding information from groundingChunks
-    const groundingChunks = candidate?.groundingMetadata?.groundingChunks;
     if (groundingChunks) {
       extractedUrlContextMetadata = groundingChunks
         .filter((chunk: any) => chunk.web)
@@ -62,48 +112,11 @@ export const generateContentWithUrlContext = async (
     
     return { text, urlContextMetadata: extractedUrlContextMetadata };
   } catch (error: any) {
-    console.error("Erreur API Gemini :", error);
-    throw new Error(error.message || "Erreur IA inconnue.");
-  }
-};
-
-export const getInitialSuggestions = async (urls: string[]): Promise<GeminiResponse> => {
-  if (urls.length === 0) return { text: JSON.stringify({ suggestions: [] }) };
-  
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const urlList = urls.join('\n');
-  
-  const promptText = `En vous basant sur ces URLs de documentation et de vidéo, suggérez 3 ou 4 questions concises qu'un utilisateur pourrait poser. 
-  Les questions DOIVENT être en Français.
-  S'il y a des vidéos, incluez au moins une question spécifique au contenu vidéo.
-  Renvoyez l'objet JSON contenant les suggestions.
-
-URLs :
-${urlList}`;
-
-  try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: [{ role: "user", parts: [{ text: promptText }] }],
-      config: {
-        responseMimeType: "application/json",
-        // Recommended method to ensure valid JSON output from the model
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            suggestions: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
-          },
-          required: ["suggestions"],
-          propertyOrdering: ["suggestions"]
-        },
-      },
-    });
-    return { text: response.text };
-  } catch (error) {
-    console.error("Erreur lors de la récupération des suggestions :", error);
-    return { text: JSON.stringify({ suggestions: [] }) };
+    // Preserve the original error type if possible for more specific handling upstream
+    const err = new Error(formatGeminiError(error));
+    if (error.name) {
+      err.name = error.name;
+    }
+    throw err;
   }
 };

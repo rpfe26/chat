@@ -1,169 +1,170 @@
 
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChatMessage, MessageSender, URLGroup } from './types';
-import { generateContentWithUrlContext, getInitialSuggestions } from './services/geminiService';
-import KnowledgeBaseManager from './components/KnowledgeBaseManager';
+import { ChatMessage, MessageSender, KnowledgeBase, AppView, UrlItem, KnowledgeFile, KnowledgeText, ChatSession } from './types';
+import { generateContentWithUrlContext } from './services/geminiService';
 import ChatInterface from './components/ChatInterface';
+import AdminView from './components/AdminView';
+import Sidebar from './components/Sidebar'; // Nouvelle importation de la Sidebar
+import { Settings, MessageSquare, GraduationCap, CloudCheck, CloudOff, Sparkles } from 'lucide-react';
 
-const GEMINI_DOCS_URLS = [
-  "https://ai.google.dev/gemini-api/docs",
-  "https://ai.google.dev/gemini-api/docs/quickstart",
-  "https://ai.google.dev/gemini-api/docs/api-key",
-];
-
-const VIDEO_RESOURCES_URLS = [
-  "https://www.youtube.com/watch?v=R9KbeE_N8_o", // Introduction to Gemini
-  "https://www.youtube.com/watch?v=0pL05InYv-Y", // Multimodal capabilities
-  "https://ai.google.dev/gemini-api/docs/video-understanding",
-];
-
-const INITIAL_URL_GROUPS: URLGroup[] = [
-  { id: 'gemini-overview', name: 'Aperçu Docs Gemini', urls: GEMINI_DOCS_URLS },
-  { id: 'video-learning', name: 'Tutoriels & Démos Vidéo', urls: VIDEO_RESOURCES_URLS },
-];
+const STORAGE_KEY_SESSIONS = 'pedagochat_sessions';
+const STORAGE_KEY_ACTIVE_SESSION = 'pedagochat_active_session_id';
 
 const App: React.FC = () => {
-  const [urlGroups, setUrlGroups] = useState<URLGroup[]>(INITIAL_URL_GROUPS);
-  const [activeUrlGroupId, setActiveUrlGroupId] = useState<string>(INITIAL_URL_GROUPS[0].id);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [view, setView] = useState<AppView>('chat');
+  const [isSyncing, setIsSyncing] = useState(false);
   
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [allChatSessions, setAllChatSessions] = useState<ChatSession[]>([]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
-  const [initialQuerySuggestions, setInitialQuerySuggestions] = useState<string[]>([]);
-  
-  const MAX_URLS = 20;
 
-  const activeGroup = urlGroups.find(group => group.id === activeUrlGroupId);
-  const currentUrlsForChat = activeGroup ? activeGroup.urls : [];
+  // New state for embed mode
+  const [embedMode, setEmbedMode] = useState(false);
+  const [embedSessionId, setEmbedSessionId] = useState<string | null>(null);
 
-   useEffect(() => {
-    const apiKey = process.env.API_KEY;
-    const currentActiveGroup = urlGroups.find(group => group.id === activeUrlGroupId);
-    const welcomeMessageText = !apiKey 
-        ? 'ERREUR : La clé API Gemini (process.env.API_KEY) n\'est pas configurée. Veuillez définir cette variable d\'environnement.'
-        : `Bienvenue ! Vous parcourez actuellement : "${currentActiveGroup?.name || 'Aucun'}". Je peux analyser la documentation et les liens vidéo. Posez-moi vos questions ou utilisez les suggestions ci-dessous !`;
-    
-    setChatMessages([{
-      id: `system-welcome-${activeUrlGroupId}-${Date.now()}`,
-      text: welcomeMessageText,
-      sender: MessageSender.SYSTEM,
-      timestamp: new Date(),
-    }]);
-  }, [activeUrlGroupId, urlGroups]); 
-
-
-  const fetchAndSetInitialSuggestions = useCallback(async (currentUrls: string[]) => {
-    if (currentUrls.length === 0) {
-      setInitialQuerySuggestions([]);
-      return;
-    }
-      
-    setIsFetchingSuggestions(true);
-    setInitialQuerySuggestions([]); 
-
-    try {
-      const response = await getInitialSuggestions(currentUrls); 
-      let suggestionsArray: string[] = [];
-      if (response.text) {
-        try {
-          // Simplified parsing logic as we now use responseSchema
-          const parsed = JSON.parse(response.text.trim());
-          if (parsed && Array.isArray(parsed.suggestions)) {
-            suggestionsArray = parsed.suggestions.filter((s: unknown) => typeof s === 'string');
-          }
-        } catch (parseError) {
-          console.error("Échec de l'analyse JSON des suggestions:", parseError);
-        }
-      }
-      setInitialQuerySuggestions(suggestionsArray.slice(0, 4)); 
-    } catch (e: any) {
-      console.error("Erreur lors de la récupération des suggestions:", e);
-    } finally {
-      setIsFetchingSuggestions(false);
-    }
-  }, []); 
-
+  // Effect to handle URL hash for embedded mode
   useEffect(() => {
-    if (currentUrlsForChat.length > 0 && process.env.API_KEY) { 
-        fetchAndSetInitialSuggestions(currentUrlsForChat);
-    } else {
-        setInitialQuerySuggestions([]); 
-    }
-  }, [currentUrlsForChat, fetchAndSetInitialSuggestions]); 
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      const embedMatch = hash.match(/^#\/embed\/(.+)$/);
+      if (embedMatch && embedMatch[1]) {
+        setEmbedMode(true);
+        setEmbedSessionId(embedMatch[1]);
+        // Do not change main view state when in embed mode, it's a different context
+      } else {
+        setEmbedMode(false);
+        setEmbedSessionId(null);
+      }
+    };
 
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange(); // Run once on mount
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
-  const handleAddUrl = (url: string) => {
-    setUrlGroups(prevGroups => 
-      prevGroups.map(group => {
-        if (group.id === activeUrlGroupId) {
-          if (group.urls.length < MAX_URLS && !group.urls.includes(url)) {
-            return { ...group, urls: [...group.urls, url] };
+  // Initialisation et chargement des sessions depuis le stockage persistant
+  useEffect(() => {
+    try {
+      const savedSessions = localStorage.getItem(STORAGE_KEY_SESSIONS);
+      const savedActiveSessionId = localStorage.getItem(STORAGE_KEY_ACTIVE_SESSION);
+
+      let initialSessions: ChatSession[] = [];
+      if (savedSessions) {
+        initialSessions = JSON.parse(savedSessions).map((session: ChatSession) => ({
+          ...session,
+          chatMessages: session.chatMessages.map(msg => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp), // Convertir les chaînes de date en objets Date
+          })),
+          knowledgeBase: {
+            ...session.knowledgeBase,
+            rawTexts: session.knowledgeBase.rawTexts.map(text => ({
+              ...text,
+              createdAt: new Date(text.createdAt),
+            })),
           }
-        }
-        return group;
-      })
+        }));
+      }
+
+      // Si aucune session n'existe ou si l'ID de session active n'est pas valide,
+      // l'application démarre sans session active, invitant l'utilisateur à en créer une.
+      setAllChatSessions(initialSessions);
+      if (savedActiveSessionId && initialSessions.some(s => s.id === savedActiveSessionId)) {
+        setActiveChatSessionId(savedActiveSessionId);
+      } else {
+        setActiveChatSessionId(initialSessions.length > 0 ? initialSessions[0].id : null);
+      }
+    } catch (error) {
+      console.error("Erreur lors du chargement des sessions depuis localStorage:", error);
+      // Fallback vers un état vide en cas d'erreur
+      setAllChatSessions([]);
+      setActiveChatSessionId(null);
+    }
+  }, []);
+
+  // Sauvegarde automatique des sessions et de la session active
+  useEffect(() => {
+    if (allChatSessions.length > 0) { // Ne pas sauvegarder si l'état initial est vide ou si toutes les sessions ont été supprimées
+      setIsSyncing(true);
+      localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(allChatSessions));
+      if (activeChatSessionId) {
+        localStorage.setItem(STORAGE_KEY_ACTIVE_SESSION, activeChatSessionId);
+      }
+      const timer = setTimeout(() => setIsSyncing(false), 800);
+      return () => clearTimeout(timer);
+    } else {
+      // Si toutes les sessions sont supprimées, vider le localStorage
+      localStorage.removeItem(STORAGE_KEY_SESSIONS);
+      localStorage.removeItem(STORAGE_KEY_ACTIVE_SESSION);
+      setIsSyncing(true); // Afficher syncing un court instant pour indiquer la sauvegarde
+      const timer = setTimeout(() => setIsSyncing(false), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [allChatSessions, activeChatSessionId]);
+
+  const currentSession = allChatSessions.find(s => s.id === activeChatSessionId);
+  const currentKnowledgeBase = currentSession?.knowledgeBase || { urls: [], files: [], rawTexts: [] };
+  const currentChatMessages = currentSession?.chatMessages || [];
+
+  const updateCurrentSession = useCallback((updater: (session: ChatSession) => ChatSession) => {
+    setAllChatSessions(prevSessions =>
+      prevSessions.map(session =>
+        session.id === activeChatSessionId ? updater(session) : session
+      )
     );
-  };
+  }, [activeChatSessionId]);
 
-  const handleRemoveUrl = (urlToRemove: string) => {
-    setUrlGroups(prevGroups =>
-      prevGroups.map(group => {
-        if (group.id === activeUrlGroupId) {
-          return { ...group, urls: group.urls.filter(url => url !== urlToRemove) };
-        }
-        return group;
-      })
-    );
-  };
-
-  const handleSendMessage = async (query: string) => {
-    if (!query.trim() || isLoading || isFetchingSuggestions) return;
-
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) return;
+  const handleSendMessage = async (query: string, sessionId: string) => {
+    // Note: sessionId parameter is added to allow sending messages in embed mode
+    const targetSession = allChatSessions.find(s => s.id === sessionId);
+    if (!query.trim() || isLoading || !process.env.API_KEY || !targetSession) return;
     
     setIsLoading(true);
-    setInitialQuerySuggestions([]); 
+    const userMsg: ChatMessage = { id: `u-${Date.now()}`, text: query, sender: MessageSender.USER, timestamp: new Date() };
+    const modelPlaceholder: ChatMessage = { id: `m-${Date.now()}`, text: 'Réflexion en cours...', sender: MessageSender.MODEL, timestamp: new Date(), isLoading: true };
 
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      text: query,
-      sender: MessageSender.USER,
-      timestamp: new Date(),
-    };
-    
-    const modelPlaceholderMessage: ChatMessage = {
-      id: `model-response-${Date.now()}`,
-      text: 'Analyse des documents et vidéos en cours...', 
-      sender: MessageSender.MODEL,
-      timestamp: new Date(),
-      isLoading: true,
-    };
-
-    setChatMessages(prevMessages => [...prevMessages, userMessage, modelPlaceholderMessage]);
+    setAllChatSessions(prevSessions =>
+      prevSessions.map(session =>
+        session.id === sessionId ? { ...session, chatMessages: [...session.chatMessages, userMsg, modelPlaceholder] } : session
+      )
+    );
 
     try {
-      const response = await generateContentWithUrlContext(query, currentUrlsForChat);
-      setChatMessages(prevMessages =>
-        prevMessages.map(msg =>
-          msg.id === modelPlaceholderMessage.id
-            ? { ...modelPlaceholderMessage, text: response.text || "J'ai reçu une réponse vide.", isLoading: false, urlContext: response.urlContextMetadata }
-            : msg
+      const response = await generateContentWithUrlContext(query, targetSession.knowledgeBase);
+      setAllChatSessions(prevSessions =>
+        prevSessions.map(session =>
+          session.id === sessionId
+            ? {
+                ...session,
+                chatMessages: session.chatMessages.map(msg => 
+                  msg.id === modelPlaceholder.id 
+                    ? { ...modelPlaceholder, text: response.text || "Désolé, je n'ai pas pu générer de réponse.", isLoading: false, urlContext: response.urlContextMetadata } 
+                    : msg
+                )
+              }
+            : session
         )
       );
     } catch (e: any) {
-      const errorMessage = e.message || 'Échec de la réponse de l\'IA.';
-      setChatMessages(prevMessages =>
-        prevMessages.map(msg =>
-          msg.id === modelPlaceholderMessage.id
-            ? { ...modelPlaceholderMessage, text: `Erreur : ${errorMessage}`, sender: MessageSender.SYSTEM, isLoading: false } 
-            : msg
+      setAllChatSessions(prevSessions =>
+        prevSessions.map(session =>
+          session.id === sessionId
+            ? {
+                ...session,
+                chatMessages: session.chatMessages.map(msg => 
+                  msg.id === modelPlaceholder.id 
+                    ? { ...modelPlaceholder, text: e.message, sender: MessageSender.SYSTEM, isLoading: false } 
+                    : msg
+                )
+              }
+            : session
         )
       );
     } finally {
@@ -171,50 +172,203 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSuggestedQueryClick = (query: string) => {
-    handleSendMessage(query);
+  // `clearHistory` function and button are removed as per request.
+
+  // Actions Admin pour la base de connaissances de la session active
+  // Fix: Correctly update the knowledgeBase property within the ChatSession object
+  const addUrl = (item: UrlItem) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, urls: [...session.knowledgeBase.urls, item] } }));
+  // Fix: Correctly update the knowledgeBase property within the ChatSession object
+  const removeUrl = (url: string) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, urls: session.knowledgeBase.urls.filter(u => u.url !== url) } }));
+  
+  // Fix: Correctly update the knowledgeBase property within the ChatSession object
+  const addFile = (file: KnowledgeFile) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, files: [...session.knowledgeBase.files, file] } }));
+  // Fix: Correctly update the knowledgeBase property within the ChatSession object
+  const removeFile = (id: string) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, files: session.knowledgeBase.files.filter(f => f.id !== id) } }));
+  
+  // Fix: Correctly update the knowledgeBase property within the ChatSession object
+  const addText = (text: KnowledgeText) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, rawTexts: [...session.knowledgeBase.rawTexts, text] } }));
+  // Fix: Correctly update the knowledgeBase property within the ChatSession object
+  const removeText = (id: string) => updateCurrentSession(session => ({ ...session, knowledgeBase: { ...session.knowledgeBase, rawTexts: session.knowledgeBase.rawTexts.filter(t => t.id !== id) } }));
+
+  // Actions pour la gestion des sessions de chat
+  const createNewChat = (name: string) => {
+    const newSession: ChatSession = {
+      id: `chat-${Date.now()}`,
+      name: name,
+      knowledgeBase: { urls: [], files: [], rawTexts: [] },
+      chatMessages: [{
+        id: 'welcome-new',
+        text: `Bienvenue dans la session **${name}** ! Utilisez l'onglet "Base de Données" pour configurer ses connaissances.`,
+        sender: MessageSender.SYSTEM,
+        timestamp: new Date(),
+      }],
+    };
+    setAllChatSessions(prev => [...prev, newSession]);
+    setActiveChatSessionId(newSession.id);
+    setView('admin'); // Basculer vers l'admin pour configurer la nouvelle session
+  };
+
+  const selectChat = (id: string) => {
+    setActiveChatSessionId(id);
+    setView('chat'); // Basculer vers le chat une fois la session sélectionnée
+    // If we are in embed mode, navigate back to main app view
+    if (embedMode) {
+      window.location.hash = '#/'; 
+    }
   };
   
-  const chatPlaceholder = currentUrlsForChat.length > 0 
-    ? `Posez une question sur les ressources de "${activeGroup?.name}"...`
-    : "Ajoutez des URLs à la base de connaissances pour commencer.";
+  // Fonction pour sélectionner un chat depuis l'admin et basculer sur l'onglet Knowledge
+  const handleAdminSelectChat = useCallback((id: string) => {
+    setActiveChatSessionId(id);
+    setView('admin'); // Assurez-vous que la vue est 'admin'
+    // L'AdminView gérera elle-même le basculement d'onglet via son useEffect sur activeChatSessionId
+    if (embedMode) { // Also exit embed mode if selecting from admin
+      window.location.hash = '#/';
+    }
+  }, [embedMode]);
 
-  return (
-    <div className="h-screen max-h-screen antialiased relative overflow-x-hidden bg-[#0F0F0F] text-[#E2E2E2]">
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/80 z-20 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} aria-hidden="true" />
-      )}
-      
-      <div className="flex h-full w-full md:p-4 md:gap-4">
-        <div className={`
-          fixed top-0 left-0 h-full w-11/12 max-w-sm z-30 transform transition-transform ease-in-out duration-300 p-3
-          md:static md:p-0 md:w-1/3 lg:w-1/4 md:h-full md:max-w-none md:translate-x-0 md:z-auto
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}>
-          <KnowledgeBaseManager
-            urls={currentUrlsForChat}
-            onAddUrl={handleAddUrl}
-            onRemoveUrl={handleRemoveUrl}
-            maxUrls={MAX_URLS}
-            urlGroups={urlGroups}
-            activeUrlGroupId={activeUrlGroupId}
-            onSetGroupId={setActiveUrlGroupId}
-            onCloseSidebar={() => setIsSidebarOpen(false)}
-          />
-        </div>
+  const deleteChat = (id: string) => {
+    if (allChatSessions.length === 0) return; // Ne rien faire s'il n'y a pas de sessions
+    if (confirm("Êtes-vous sûr de vouloir supprimer cette session de chat et toutes ses données ?")) {
+      setAllChatSessions(prev => {
+        const remainingSessions = prev.filter(session => session.id !== id);
+        if (remainingSessions.length === 0) {
+          // Si toutes les sessions sont supprimées, réinitialiser à l'état vide
+          setActiveChatSessionId(null);
+          return [];
+        }
+        if (activeChatSessionId === id) {
+          // Si la session supprimée était active, sélectionner la première restante
+          setActiveChatSessionId(remainingSessions[0].id);
+        }
+        return remainingSessions;
+      });
+    }
+  };
 
-        <div className="w-full h-full p-3 md:p-0 md:w-2/3 lg:w-3/4">
+  // Render logic for embed mode
+  if (embedMode) {
+    const embeddedSession = allChatSessions.find(s => s.id === embedSessionId);
+    if (embeddedSession) {
+      return (
+        <div className="h-screen w-screen flex items-center justify-center bg-gray-50 text-gray-900 font-sans p-4">
           <ChatInterface
-            messages={chatMessages}
-            onSendMessage={handleSendMessage}
+            messages={embeddedSession.chatMessages}
+            onSendMessage={(query) => handleSendMessage(query, embeddedSession.id)}
             isLoading={isLoading}
-            placeholderText={chatPlaceholder}
-            initialQuerySuggestions={initialQuerySuggestions}
-            onSuggestedQueryClick={handleSuggestedQueryClick}
-            isFetchingSuggestions={isFetchingSuggestions}
-            onToggleSidebar={() => setIsSidebarOpen(true)}
+            placeholderText={
+              embeddedSession.knowledgeBase.urls.length + embeddedSession.knowledgeBase.files.length + embeddedSession.knowledgeBase.rawTexts.length > 0 
+                ? "Posez une question à cette base de données..." 
+                : "Cette session n'a pas de base de connaissances configurée."
+            }
           />
         </div>
+      );
+    } else {
+      return (
+        <div className="h-screen w-screen flex items-center justify-center bg-red-50 text-red-800 font-sans p-4">
+          <div className="bg-red-100 border border-red-300 rounded-xl p-6 text-center shadow-lg">
+            <h2 className="text-xl font-bold mb-2">Session de chat introuvable</h2>
+            <p className="text-red-700">L'identifiant de session fourni dans l'URL est invalide ou la session n'existe plus.</p>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // Normal application render
+  return (
+    <div className="h-screen bg-gray-50 text-gray-900 flex font-sans">
+      {/* Sidebar */}
+      <Sidebar
+        onGoToAdmin={() => setView('admin')}
+        onGoToChat={() => setView('chat')}
+        currentView={view}
+        allChatSessions={allChatSessions} // Nouvelle prop
+        activeChatSessionId={activeChatSessionId} // Nouvelle prop
+        onSelectChat={selectChat} // Nouvelle prop
+      />
+
+      <div className="flex flex-col flex-grow overflow-hidden">
+        {/* Barre de Navigation Supérieure */}
+        <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 shrink-0 z-50 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-700 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
+              <GraduationCap className="text-white" size={22} />
+            </div>
+            <div>
+              <h1 className="text-sm font-black tracking-tighter text-gray-900">PEDAGOCHAT</h1>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">
+                  Session: {currentSession?.name || 'Aucune session active'}
+                </span>
+                <div className="flex items-center gap-1">
+                  {isSyncing ? (
+                     <CloudOff size={10} className="text-amber-500 animate-pulse" />
+                  ) : (
+                     <CloudCheck size={10} className="text-green-600" />
+                  )}
+                  <span className="text-[9px] text-gray-400 uppercase font-bold">Données Locales</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* "Effacer l'historique" button removed */}
+          </div>
+        </header>
+
+        {/* Zone de contenu principale */}
+        <main className="flex-grow overflow-hidden relative">
+          {view === 'admin' ? (
+            <AdminView 
+              knowledgeBase={currentKnowledgeBase}
+              onAddUrl={addUrl}
+              onRemoveUrl={removeUrl}
+              onAddFile={addFile}
+              onRemoveFile={removeFile}
+              onAddText={addText}
+              onRemoveText={removeText}
+              onGoToChat={() => setView('chat')}
+
+              allChatSessions={allChatSessions}
+              activeChatSessionId={activeChatSessionId}
+              onCreateNewChat={createNewChat}
+              onDeleteChat={deleteChat}
+              onAdminSelectChat={handleAdminSelectChat} // Nouvelle prop pour la sélection depuis l'admin
+            />
+          ) : ( // view === 'chat'
+            activeChatSessionId === null ? (
+              <div className="h-full flex items-center justify-center bg-gray-50">
+                <div className="bg-white rounded-3xl p-8 shadow-lg border border-gray-200 text-center max-w-lg mx-auto">
+                  <Sparkles size={48} className="text-blue-500 mx-auto mb-4" />
+                  <h2 className="text-xl font-bold text-gray-900 mb-2">Bienvenue sur PedagoChat !</h2>
+                  <p className="text-gray-600 mb-6">
+                    Il semblerait que vous n'ayez aucune session de chat active.
+                    Veuillez vous rendre dans l'<button onClick={() => setView('admin')} className="text-indigo-600 font-bold underline">Administration</button>
+                    pour créer votre première session.
+                  </p>
+                  <button 
+                    onClick={() => setView('admin')}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95"
+                  >
+                    <Settings size={18} className="inline-block mr-2" /> Aller à l'administration
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full max-w-5xl mx-auto w-full p-4 md:p-6 flex flex-col">
+                <ChatInterface
+                  messages={currentChatMessages}
+                  onSendMessage={(query) => handleSendMessage(query, activeChatSessionId)}
+                  isLoading={isLoading}
+                  placeholderText={currentKnowledgeBase.urls.length + currentKnowledgeBase.files.length + currentKnowledgeBase.rawTexts.length > 0 ? "Posez une question à votre base de données..." : "Allez dans l'administration pour enrichir ses connaissances."}
+                />
+              </div>
+            )
+          )}
+        </main>
       </div>
     </div>
   );
