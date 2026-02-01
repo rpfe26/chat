@@ -11,16 +11,16 @@ const __dirname = path.dirname(__filename);
 const DB_PATH = path.join(__dirname, 'db.json');
 
 const app = express();
-// Changement du port par défaut à 3000 pour éviter le conflit avec le port 5173 de Vite
+// Sur une VM, on utilise souvent le port 3000 ou 8080
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
-app.use(express.static('dist'));
 
-// Initialisation de la "base de données"
+// Initialisation de la base de données JSON
 if (!fs.existsSync(DB_PATH)) {
+  console.log("📝 Initialisation de la base de données db.json...");
   fs.writeFileSync(DB_PATH, JSON.stringify({ sessions: [] }, null, 2));
 }
 
@@ -29,15 +29,20 @@ const readDB = () => {
     const data = fs.readFileSync(DB_PATH, 'utf8');
     return JSON.parse(data);
   } catch (err) {
+    console.error("❌ Erreur de lecture DB:", err);
     return { sessions: [] };
   }
 };
 
 const writeDB = (data) => {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error("❌ Erreur d'écriture DB:", err);
+  }
 };
 
-// API Endpoints
+// --- API Endpoints ---
 app.get('/api/sessions', (req, res) => {
   const db = readDB();
   res.json(db.sessions);
@@ -70,15 +75,29 @@ app.delete('/api/sessions/:id', (req, res) => {
   res.status(204).send();
 });
 
-// Route par défaut pour le SPA
+// --- Service Statique (Frontend Build) ---
+// On sert les fichiers du dossier 'dist' générés par npm run build
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+
+// Route "Catch-all" pour les applications Single Page (SPA)
+// Redirige toutes les requêtes non-API vers index.html
 app.get('*', (req, res) => {
-  if (fs.existsSync(path.join(__dirname, 'dist', 'index.html'))) {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  const indexPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
   } else {
-    res.send('Serveur API PedagoChat en ligne. Accédez à l\'application via le port de build ou de dev.');
+    res.status(404).send("Frontend non compilé. Lancez 'npm run build' sur la VM.");
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Serveur PedagoChat lancé sur http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`
+  🚀 PEDAGOCHAT EST EN LIGNE
+  ---------------------------
+  Port    : ${PORT}
+  Mode    : Production (VM Linux)
+  Accès   : http://0.0.0.0:${PORT}
+  Database: ${DB_PATH}
+  `);
 });

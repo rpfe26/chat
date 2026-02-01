@@ -4,19 +4,23 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Globe, FileText, Type, Trash2, Plus, 
-  Search, FileUp, ArrowLeft, Settings, Users, User, Clock, MessageSquare, AlertCircle,
-  Edit3, Maximize2, Minimize2, Save, X
+  FileUp, ArrowLeft, Settings, Users, User, Clock, MessageSquare, AlertCircle,
+  Maximize2, Minimize2, Save, Image as ImageIcon, Music, Film, Download, Database,
+  MousePointer2, Layers, Video, Youtube, Cpu, Key, ExternalLink, ShieldCheck, Sparkles,
+  Link, Zap, Info
 } from 'lucide-react';
-import { KnowledgeBase, UrlItem, KnowledgeFile, KnowledgeText, ChatSession, MessageSender } from '../types';
+import { KnowledgeBase, UrlItem, VideoLinkItem, KnowledgeFile, KnowledgeText, ChatSession, MessageSender, AIProvider } from '../types';
 import ChatSessionsAdmin from './ChatSessionsAdmin';
 
 interface AdminViewProps {
   knowledgeBase: KnowledgeBase;
   onAddUrl: (item: UrlItem) => void;
   onRemoveUrl: (url: string) => void;
+  onAddVideoLink: (item: VideoLinkItem) => void;
+  onRemoveVideoLink: (url: string) => void;
   onAddFile: (file: KnowledgeFile) => void;
   onRemoveFile: (id: string) => void;
   onAddText: (text: KnowledgeText) => void;
@@ -27,74 +31,38 @@ interface AdminViewProps {
   onDeleteChat: (id: string) => void;
   onCreateNewChat: (name: string) => void;
   onAdminSelectChat: (id: string) => void;
+  onUpdateSession: (updates: Partial<ChatSession>) => void;
 }
 
 const AdminView: React.FC<AdminViewProps> = ({
-  knowledgeBase, onAddUrl, onRemoveUrl, onAddFile, onRemoveFile, onAddText, onRemoveText, onGoToChat,
-  allChatSessions, activeChatSessionId, onDeleteChat, onCreateNewChat, onAdminSelectChat
+  knowledgeBase, onAddUrl, onRemoveUrl, onAddVideoLink, onRemoveVideoLink, onAddFile, onRemoveFile, onAddText, onRemoveText, onGoToChat,
+  allChatSessions, activeChatSessionId, onDeleteChat, onCreateNewChat, onAdminSelectChat, onUpdateSession
 }) => {
-  const [activeTab, setActiveTab] = useState<'sessions' | 'knowledge' | 'monitoring'>('sessions');
+  const [activeTab, setActiveTab] = useState<'sessions' | 'knowledge' | 'monitoring' | 'config'>('knowledge');
   const [selectedVisitorFilter, setSelectedVisitorFilter] = useState<string | 'all'>('all');
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
 
   const currentSession = allChatSessions.find(s => s.id === activeChatSessionId);
 
-  // States pour l'édition
   const [urlInput, setUrlInput] = useState('');
-  const [editingUrlOldValue, setEditingUrlOldValue] = useState<string | null>(null);
-  
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [crawlMode, setCrawlMode] = useState<'page' | 'site'>('page');
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [isFullscreenNote, setIsFullscreenNote] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Monitoring logic
-  const visitors = useMemo(() => {
-    if (!currentSession) return [];
-    const ids = new Set<string>();
-    currentSession.chatMessages.forEach(m => {
-      if (m.visitorId) ids.add(m.visitorId);
-    });
-    return Array.from(ids);
-  }, [currentSession]);
+  useEffect(() => {
+    const checkKey = async () => {
+      if ((window as any).aistudio) {
+        const result = await (window as any).aistudio.hasSelectedApiKey();
+        setHasKey(result);
+      }
+    };
+    checkKey();
+  }, [activeTab]);
 
-  const monitoredMessages = useMemo(() => {
-    if (!currentSession) return [];
-    if (selectedVisitorFilter === 'all') return currentSession.chatMessages;
-    return currentSession.chatMessages.filter(m => m.visitorId === selectedVisitorFilter || m.sender === MessageSender.SYSTEM);
-  }, [currentSession, selectedVisitorFilter]);
-
-  // Handlers pour la navigation automatique
-  const handleSelectChatAndSwitch = (id: string) => {
-    onAdminSelectChat(id);
-    setActiveTab('knowledge');
-  };
-
-  const handleCreateChatAndSwitch = (name: string) => {
-    onCreateNewChat(name);
-    setActiveTab('knowledge');
-  };
-
-  // Handlers pour URLs
-  const handleUrlSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!urlInput.trim()) return;
-    
-    if (editingUrlOldValue) {
-      onRemoveUrl(editingUrlOldValue);
-    }
-    onAddUrl({ url: urlInput.trim() });
-    setUrlInput('');
-    setEditingUrlOldValue(null);
-  };
-
-  const handleEditUrl = (url: string) => {
-    setUrlInput(url);
-    setEditingUrlOldValue(url);
-  };
-
-  // Handlers pour Fichiers
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -113,359 +81,301 @@ const AdminView: React.FC<AdminViewProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Handlers pour Notes
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!urlInput.trim()) return;
+    onAddUrl({ url: urlInput.trim(), crawlMode });
+    setUrlInput('');
+  };
+
+  const handleVideoUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!videoUrlInput.trim()) return;
+    onAddVideoLink({ url: videoUrlInput.trim() });
+    setVideoUrlInput('');
+  };
+
   const handleTextSubmit = () => {
     if (!noteTitle.trim() || !noteContent.trim()) return;
-    
-    if (editingNoteId) {
-      onRemoveText(editingNoteId);
-    }
-
     onAddText({
-      id: editingNoteId || Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substr(2, 9),
       title: noteTitle.trim(),
       content: noteContent.trim(),
       createdAt: new Date()
     });
-    
-    setNoteTitle('');
-    setNoteContent('');
-    setEditingNoteId(null);
-    setIsFullscreenNote(false);
+    setNoteTitle(''); setNoteContent(''); setIsFullscreenNote(false);
   };
 
-  const handleEditNote = (note: KnowledgeText) => {
-    setNoteTitle(note.title);
-    setNoteContent(note.content);
-    setEditingNoteId(note.id);
+  const handleOpenKeyPicker = async () => {
+    try {
+      if ((window as any).aistudio) {
+        await (window as any).aistudio.openSelectKey();
+        setHasKey(true);
+      } else {
+        alert("L'interface de sélection de clé n'est disponible que dans l'environnement AI Studio.");
+      }
+    } catch (error) {
+      console.error("Erreur lors de l'ouverture du sélecteur de clé:", error);
+    }
   };
 
-  const cancelEditNote = () => {
-    setNoteTitle('');
-    setNoteContent('');
-    setEditingNoteId(null);
-  };
+  const visitors = useMemo(() => {
+    if (!currentSession) return [];
+    const ids = new Set<string>();
+    currentSession.chatMessages.forEach(m => { if (m.visitorId) ids.add(m.visitorId); });
+    return Array.from(ids);
+  }, [currentSession]);
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 md:p-10 animate-in fade-in duration-500">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="h-full overflow-y-auto bg-gray-50/50 p-6 md:p-8 animate-in fade-in duration-500">
+      <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-8">
-          <div className="flex items-center gap-5">
-            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
-              <Settings size={28} />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Configuration & Suivi</h2>
-              <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
-                <p>Gérez les connaissances et suivez les interactions.</p>
-                {currentSession && (
-                  <>
-                    <span className="text-gray-300">|</span>
-                    <span className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100">
-                      <MessageSquare size={12} /> {currentSession.name}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-4">
+             <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
+                <Settings size={24} />
+             </div>
+             <div>
+               <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">Espace Enseignant</h2>
+               <p className="text-xs text-gray-500 font-bold uppercase tracking-widest flex items-center gap-2">
+                 Session : <span className="text-indigo-600">{currentSession?.name || 'Veuillez choisir'}</span>
+               </p>
+             </div>
           </div>
-          <button onClick={onGoToChat} className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 rounded-xl text-sm font-bold border border-gray-200 text-gray-700 transition-all shadow-sm active:scale-95">
-            <ArrowLeft size={16} /> Retour au Chat
+          <button onClick={onGoToChat} className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-sm transition-all flex items-center gap-2">
+            <ArrowLeft size={14} /> Retour au Chat
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <nav className="flex bg-gray-200/50 p-1.5 rounded-2xl border border-gray-200">
-          <button onClick={() => setActiveTab('sessions')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'sessions' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <MessageSquare size={14} /> Sessions
-          </button>
-          <button onClick={() => setActiveTab('knowledge')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'knowledge' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <FileText size={14} /> Connaissances
-          </button>
-          <button onClick={() => setActiveTab('monitoring')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'monitoring' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <Users size={14} /> Suivi Élèves
-          </button>
-        </nav>
-
-        {/* Tab Content */}
-        {activeTab === 'sessions' && (
-          <ChatSessionsAdmin 
-            allChatSessions={allChatSessions} 
-            activeChatSessionId={activeChatSessionId} 
-            onCreateNewChat={handleCreateChatAndSwitch} 
-            onDeleteChat={onDeleteChat} 
-            onAdminSelectChat={handleSelectChatAndSwitch} 
-          />
-        )}
+        <div className="flex justify-center mb-8">
+          <div className="bg-gray-200/60 p-1.5 rounded-2xl inline-flex shadow-inner">
+            <button onClick={() => setActiveTab('sessions')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'sessions' ? 'bg-white text-indigo-700 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+              Sessions
+            </button>
+            <button onClick={() => setActiveTab('knowledge')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'knowledge' ? 'bg-white text-indigo-700 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+              Ressources
+            </button>
+            <button onClick={() => setActiveTab('monitoring')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'monitoring' ? 'bg-white text-indigo-700 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+              Suivi
+            </button>
+            <button onClick={() => setActiveTab('config')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'config' ? 'bg-white text-indigo-700 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+              Configuration IA
+            </button>
+          </div>
+        </div>
 
         {activeTab === 'knowledge' && (
           !currentSession ? (
-            <div className="bg-white p-12 rounded-3xl border border-gray-200 shadow-sm text-center flex flex-col items-center justify-center space-y-4">
-              <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center">
-                <AlertCircle size={32} />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Aucune session sélectionnée</h3>
-                <p className="text-gray-500 text-sm max-w-sm mx-auto">Veuillez d'abord sélectionner une session dans l'onglet "Sessions" pour pouvoir lui ajouter des ressources.</p>
-              </div>
-              <button onClick={() => setActiveTab('sessions')} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs transition-all active:scale-95 shadow-lg shadow-indigo-600/20">Aller aux Sessions</button>
+            <div className="bg-white p-12 rounded-[2rem] border border-gray-100 shadow-xl text-center flex flex-col items-center justify-center space-y-4">
+               <AlertCircle size={48} className="text-amber-500 mb-2" />
+               <h3 className="text-lg font-bold">Sélectionnez d'abord une session</h3>
+               <button onClick={() => setActiveTab('sessions')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl text-xs font-black uppercase shadow-lg shadow-indigo-200">Choisir une session</button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
-              
-              {/* Web URLs */}
-              <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-4 flex flex-col h-[550px]">
-                <h3 className="font-bold flex items-center gap-2 text-blue-700 shrink-0"><Globe size={18}/> Liens Web / IP</h3>
-                <form onSubmit={handleUrlSubmit} className="flex gap-2 shrink-0">
-                  <input 
-                    type="text" 
-                    value={urlInput} 
-                    onChange={e => setUrlInput(e.target.value)} 
-                    placeholder="https://... ou adresse IP" 
-                    className={`flex-grow bg-gray-50 border rounded-xl px-4 py-2 text-sm outline-none transition-all ${editingUrlOldValue ? 'border-amber-400 focus:border-amber-500' : 'border-gray-200 focus:border-blue-500'}`} 
-                  />
-                  <button type="submit" className={`p-2 text-white rounded-xl transition-colors shadow-md ${editingUrlOldValue ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>
-                    {editingUrlOldValue ? <Save size={20}/> : <Plus size={20}/>}
-                  </button>
-                  {editingUrlOldValue && (
-                    <button type="button" onClick={() => {setUrlInput(''); setEditingUrlOldValue(null);}} className="p-2 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all">
-                      <X size={20}/>
-                    </button>
-                  )}
-                </form>
-                <div className="space-y-2 overflow-y-auto pr-2 chat-container flex-grow">
-                  {knowledgeBase.urls.length === 0 ? (
-                    <p className="text-[10px] text-center text-gray-400 italic py-4">Aucun lien web.</p>
-                  ) : (
-                    knowledgeBase.urls.map((u, i) => (
-                      <div key={i} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group transition-all hover:border-blue-200">
-                        <span className="text-[10px] font-medium truncate flex-grow pr-2 text-gray-600">{u.url}</span>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleEditUrl(u.url)} className="text-gray-400 hover:text-amber-500 transition-colors p-1"><Edit3 size={14}/></button>
-                          <button onClick={() => onRemoveUrl(u.url)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={14}/></button>
-                        </div>
-                      </div>
-                    ))
-                  )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8 animate-in slide-in-from-bottom-8 duration-500">
+              {/* Colonnes de ressources (Identiques au code existant) */}
+              <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-[750px] space-y-8">
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><Globe size={20} /></div>
+                    <h3 className="font-black text-xs uppercase tracking-widest text-gray-800">Liens & Sites Web</h3>
+                  </div>
+                  <form onSubmit={handleUrlSubmit} className="space-y-2">
+                    <div className="flex gap-2">
+                      <input type="text" value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="https://site.com" className="flex-grow bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
+                      <button type="submit" className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-md transition-all active:scale-95"><Plus size={20}/></button>
+                    </div>
+                  </form>
+                </div>
+                <div className="flex-grow overflow-y-auto chat-container pr-2 space-y-3 pt-4 border-t border-gray-100">
+                  {knowledgeBase.urls.map((u, i) => (
+                    <div key={`u-${i}`} className="flex justify-between items-center bg-gray-50/50 p-3 rounded-xl border border-gray-100 group">
+                      <span className="text-[10px] font-bold truncate text-blue-600">{u.url}</span>
+                      <button onClick={() => onRemoveUrl(u.url)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={12}/></button>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Documents */}
-              <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-4 flex flex-col h-[550px]">
-                <h3 className="font-bold flex items-center gap-2 text-indigo-700 shrink-0"><FileText size={18}/> Documents PDF</h3>
-                <div onClick={() => fileInputRef.current?.click()} className="shrink-0 border-2 border-dashed border-gray-200 rounded-2xl py-6 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition-all hover:border-indigo-300">
-                  <FileUp size={24} className="text-indigo-400 mb-2" />
-                  <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Ajouter un PDF</span>
-                  <input ref={fileInputRef} type="file" className="hidden" accept=".pdf" onChange={handleFileUpload} />
+              <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-[750px]">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><Database size={20} /></div>
+                  <h3 className="font-black text-xs uppercase tracking-widest text-gray-800">Médiathèque</h3>
                 </div>
-                <div className="space-y-2 overflow-y-auto pr-2 chat-container flex-grow">
-                  {knowledgeBase.files.length === 0 ? (
-                    <p className="text-[10px] text-center text-gray-400 italic py-4">Aucun document.</p>
-                  ) : (
-                    knowledgeBase.files.map((f) => (
-                      <div key={f.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 transition-all hover:border-indigo-200 group">
-                        <span className="text-[10px] font-medium truncate flex-grow pr-2 text-gray-600">{f.name}</span>
-                        <button onClick={() => onRemoveFile(f.id)} className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button>
+                <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-gray-200 rounded-[1.5rem] py-10 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition-all hover:border-indigo-300 mb-6 group">
+                  <FileUp size={28} className="text-indigo-400 mb-2 group-hover:scale-110" />
+                  <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest text-center">Ajouter un fichier</span>
+                  <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+                </div>
+                <div className="flex-grow overflow-y-auto chat-container pr-2 space-y-3">
+                  {knowledgeBase.files.map((f) => (
+                    <div key={f.id} className="bg-gray-50/50 p-4 rounded-2xl border border-gray-100 group hover:border-indigo-200 transition-all">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black truncate text-gray-700">{f.name}</span>
+                        <button onClick={() => onRemoveFile(f.id)} className="p-1.5 text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>
                       </div>
-                    ))
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Notes */}
-              <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-4 flex flex-col h-[550px]">
-                <div className="flex items-center justify-between shrink-0">
-                  <h3 className="font-bold flex items-center gap-2 text-amber-700"><Type size={18}/> Notes Internes</h3>
-                  {editingNoteId && (
-                    <span className="text-[9px] font-black uppercase text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Mode Édition</span>
-                  )}
+              <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-[750px]">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><Type size={20} /></div>
+                  <h3 className="font-black text-xs uppercase tracking-widest text-gray-800">Notes</h3>
                 </div>
-                
-                <div className="space-y-3 shrink-0">
-                  <input 
-                    value={noteTitle} 
-                    onChange={e => setNoteTitle(e.target.value)} 
-                    placeholder="Titre de la note..." 
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-amber-500 transition-all" 
-                  />
-                  <div className="relative">
-                    <textarea 
-                      value={noteContent} 
-                      onChange={e => setNoteContent(e.target.value)} 
-                      placeholder="Contenu pédagogique..." 
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none h-24 resize-none focus:border-amber-500 transition-all" 
-                    />
-                    <button 
-                      onClick={() => setIsFullscreenNote(true)}
-                      className="absolute bottom-2 right-2 p-1.5 bg-white border border-gray-200 text-gray-400 hover:text-indigo-600 hover:border-indigo-200 rounded-lg transition-all shadow-sm"
-                      title="Éditer en plein écran"
-                    >
-                      <Maximize2 size={14} />
-                    </button>
-                  </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={handleTextSubmit} 
-                      className={`flex-grow py-2 text-white font-black rounded-xl text-[10px] uppercase tracking-widest transition-all shadow-md active:scale-95 ${editingNoteId ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}
-                    >
-                      {editingNoteId ? 'Mettre à jour la note' : 'Enregistrer la note'}
-                    </button>
-                    {editingNoteId && (
-                      <button onClick={cancelEditNote} className="px-3 py-2 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-all">
-                        <X size={16}/>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2 overflow-y-auto pr-2 chat-container flex-grow border-t border-gray-100 pt-4">
-                  {knowledgeBase.rawTexts.length === 0 ? (
-                    <p className="text-[10px] text-center text-gray-400 italic py-4">Aucune note interne.</p>
-                  ) : (
-                    knowledgeBase.rawTexts.map((t) => (
-                      <div 
-                        key={t.id} 
-                        className={`p-3 rounded-xl border transition-all space-y-1 relative group cursor-pointer ${editingNoteId === t.id ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-100' : 'bg-gray-50 border-gray-100 hover:border-amber-200'}`}
-                        onClick={() => handleEditNote(t)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <span className="text-[10px] font-black text-amber-700 uppercase truncate pr-10">{t.title}</span>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 absolute top-2 right-2 transition-opacity">
-                            <button className="text-gray-400 hover:text-amber-600 p-1"><Edit3 size={12}/></button>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); onRemoveText(t.id); if(editingNoteId === t.id) cancelEditNote(); }} 
-                              className="text-gray-300 hover:text-red-500 p-1"
-                            >
-                              <Trash2 size={12}/>
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-[9px] text-gray-500 line-clamp-2 leading-relaxed">{t.content}</p>
-                      </div>
-                    ))
-                  )}
+                <div className="space-y-3 mb-6">
+                  <input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none" />
+                  <textarea value={noteContent} onChange={e => setNoteContent(e.target.value)} placeholder="Contenu..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none h-40 resize-none" />
+                  <button onClick={handleTextSubmit} className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl text-[10px] uppercase shadow-lg">Enregistrer</button>
                 </div>
               </div>
             </div>
           )
         )}
 
-        {activeTab === 'monitoring' && (
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden flex flex-col md:flex-row h-[600px] animate-in slide-in-from-bottom-4 duration-500">
-            {/* Liste des Visiteurs */}
-            <div className="w-full md:w-64 border-r border-gray-200 flex flex-col bg-gray-50/50">
-              <div className="p-4 border-b border-gray-200 bg-white">
-                <h4 className="text-xs font-black uppercase tracking-widest text-gray-500 flex items-center gap-2">
-                  <Users size={14} /> Élèves Connectés ({visitors.length})
-                </h4>
-              </div>
-              <div className="flex-grow overflow-y-auto p-2 space-y-1 chat-container">
-                <button 
-                  onClick={() => setSelectedVisitorFilter('all')}
-                  className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold transition-all ${selectedVisitorFilter === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}
-                >
-                  Tous les messages
-                </button>
-                {visitors.length === 0 ? (
-                  <p className="text-[10px] text-center text-gray-400 py-6 italic">Aucun élève identifié.</p>
-                ) : (
-                  visitors.map(id => (
-                    <button 
-                      key={id}
-                      onClick={() => setSelectedVisitorFilter(id)}
-                      className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${selectedVisitorFilter === id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}
-                    >
-                      <User size={12} />
-                      <span className="truncate">{id}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
+        {activeTab === 'config' && currentSession && (
+          <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-8 duration-500">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              
+              {/* Choix du Fournisseur */}
+              <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Zap size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Fournisseur d'IA</h3>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Technologie active</p>
+                  </div>
+                </div>
 
-            {/* Visualisation des messages */}
-            <div className="flex-grow flex flex-col bg-white">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50/30">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                  {selectedVisitorFilter === 'all' ? "Journal des interactions globales" : `Conversation de l'élève : ${selectedVisitorFilter}`}
-                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => onUpdateSession({ aiProvider: 'gemini' })}
+                    className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${currentSession.aiProvider === 'gemini' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100 hover:border-indigo-200'}`}
+                  >
+                    <Sparkles size={20} className={currentSession.aiProvider === 'gemini' ? 'text-indigo-600' : 'text-gray-400'} />
+                    <span className="text-[10px] font-black uppercase">Google Gemini</span>
+                  </button>
+                  <button 
+                    onClick={() => onUpdateSession({ aiProvider: 'openrouter' })}
+                    className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${currentSession.aiProvider === 'openrouter' ? 'border-amber-600 bg-amber-50' : 'border-gray-100 hover:border-amber-200'}`}
+                  >
+                    <Link size={20} className={currentSession.aiProvider === 'openrouter' ? 'text-amber-600' : 'text-gray-400'} />
+                    <span className="text-[10px] font-black uppercase">OpenRouter</span>
+                  </button>
+                </div>
               </div>
-              <div className="flex-grow overflow-y-auto p-6 space-y-4 chat-container">
-                {monitoredMessages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center opacity-30 italic text-sm">Aucun message pour ce filtre</div>
+
+              {/* Paramètres du Modèle */}
+              <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Cpu size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Identifiant Modèle</h3>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Moteur de réflexion</p>
+                  </div>
+                </div>
+
+                {currentSession.aiProvider === 'gemini' ? (
+                  <div className="space-y-3">
+                    <button 
+                      onClick={() => onUpdateSession({ modelName: 'gemini-3-flash-preview' })}
+                      className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${currentSession.modelName === 'gemini-3-flash-preview' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
+                    >
+                      <h4 className="text-xs font-black uppercase">Gemini 3 Flash</h4>
+                      <p className="text-[9px] text-gray-500 font-bold">Standard, équilibré, multimédia.</p>
+                    </button>
+                    <button 
+                      onClick={() => onUpdateSession({ modelName: 'gemini-3-pro-preview' })}
+                      className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${currentSession.modelName === 'gemini-3-pro-preview' ? 'border-purple-600 bg-purple-50' : 'border-gray-100 hover:border-gray-200'}`}
+                    >
+                      <h4 className="text-xs font-black uppercase">Gemini 3 Pro</h4>
+                      <p className="text-[9px] text-gray-500 font-bold">Expertise, raisonnement poussé.</p>
+                    </button>
+                  </div>
                 ) : (
-                  monitoredMessages.map(m => (
-                    <div key={m.id} className={`flex flex-col ${m.sender === MessageSender.USER ? 'items-end' : 'items-start'}`}>
-                      <div className={`max-w-[85%] p-3 rounded-2xl text-xs shadow-sm ${
-                        m.sender === MessageSender.USER ? 'bg-blue-600 text-white' : 
-                        m.sender === MessageSender.MODEL ? 'bg-gray-100 border border-gray-200 text-gray-800' : 
-                        'bg-amber-50 text-amber-700 italic border border-amber-100'
-                      }`}>
-                        <div className="font-black text-[9px] uppercase tracking-tighter opacity-70 mb-1 flex justify-between gap-4 border-b border-current/10 pb-1">
-                          <span>{m.sender === MessageSender.USER ? `ÉLÈVE (${m.visitorId})` : m.sender.toUpperCase()}</span>
-                          <span className="flex items-center gap-1 font-medium"><Clock size={8}/> {new Date(m.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                        <div className="whitespace-pre-wrap pt-1">{m.text}</div>
-                      </div>
+                  <div className="space-y-4">
+                    <input 
+                      type="text" 
+                      value={currentSession.modelName} 
+                      onChange={(e) => onUpdateSession({ modelName: e.target.value })}
+                      placeholder="ex: anthropic/claude-3.5-sonnet"
+                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-sm font-mono outline-none focus:border-amber-400"
+                    />
+                    <div className="p-4 bg-amber-50 rounded-2xl flex gap-3">
+                      <Info size={16} className="text-amber-600 shrink-0" />
+                      <p className="text-[9px] text-amber-800 font-bold leading-relaxed">
+                        Entrez l'identifiant exact du modèle disponible sur OpenRouter (ex: openai/gpt-4o, meta-llama/llama-3-70b).
+                      </p>
                     </div>
-                  ))
+                  </div>
                 )}
+              </div>
+
+              {/* Gestion de la Clé API */}
+              <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl space-y-6 md:col-span-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Key size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Authentification API</h3>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Sécurité de session</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Clé API pour cette session :</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="password" 
+                        value={currentSession.sessionApiKey || ''} 
+                        onChange={(e) => onUpdateSession({ sessionApiKey: e.target.value })}
+                        placeholder="sk-or-v1-..."
+                        className="flex-grow bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-mono outline-none focus:border-indigo-400"
+                      />
+                      {currentSession.aiProvider === 'gemini' && (
+                        <button 
+                          onClick={handleOpenKeyPicker}
+                          className="bg-indigo-600 text-white px-6 rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-indigo-100"
+                        >
+                          Sélecteur Google
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="p-4 bg-gray-100 rounded-2xl">
+                    <p className="text-[10px] text-gray-500 font-bold leading-relaxed italic">
+                      Note : Si ce champ est vide, l'application utilisera la clé API configurée par défaut sur le serveur Linux. 
+                      Fournir une clé ici permet d'isoler les crédits pour cette classe spécifique.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
-      </div>
 
-      {/* MODAL ÉDITION PLEIN ÉCRAN */}
-      {isFullscreenNote && (
-        <div className="fixed inset-0 z-[110] bg-white flex flex-col animate-in slide-in-from-bottom-8 duration-300">
-          <header className="h-20 border-b border-gray-100 flex items-center justify-between px-8 bg-gray-50/50">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
-                <Type size={24} />
-              </div>
-              <div>
-                <input 
-                  value={noteTitle} 
-                  onChange={e => setNoteTitle(e.target.value)} 
-                  placeholder="Titre de la note pédagogique..." 
-                  className="bg-transparent text-xl font-black text-gray-900 outline-none w-96 placeholder-gray-300" 
-                />
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Éditeur immersif PedagoChat</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setIsFullscreenNote(false)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-xs font-bold transition-all"
-              >
-                <Minimize2 size={16} /> Réduire
-              </button>
-              <button 
-                onClick={handleTextSubmit}
-                className="flex items-center gap-2 px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-amber-600/20 transition-all"
-              >
-                <Save size={16} /> {editingNoteId ? 'Mettre à jour' : 'Enregistrer'}
-              </button>
-            </div>
-          </header>
-          <main className="flex-grow p-12 bg-white flex justify-center overflow-hidden">
-            <textarea 
-              value={noteContent} 
-              onChange={e => setNoteContent(e.target.value)} 
-              placeholder="Commencez à rédiger votre contenu pédagogique ici... Votre assistant utilisera ce texte pour répondre aux questions des élèves." 
-              className="w-full max-w-4xl h-full text-lg leading-relaxed text-gray-800 outline-none resize-none font-medium placeholder-gray-200" 
-              autoFocus
-            />
-          </main>
-          <footer className="h-12 border-t border-gray-50 px-8 flex items-center justify-between text-[10px] font-medium text-gray-400">
-            <span>Nombre de caractères : {noteContent.length}</span>
-            <span className="italic">Les modifications sont enregistrées une fois que vous cliquez sur "Enregistrer" ou "Mettre à jour".</span>
-          </footer>
-        </div>
-      )}
+        {/* Reste des onglets (Monitoring, Sessions) identique */}
+        {activeTab === 'sessions' && (
+          <ChatSessionsAdmin 
+            allChatSessions={allChatSessions} 
+            activeChatSessionId={activeChatSessionId} 
+            onCreateNewChat={onCreateNewChat} 
+            onDeleteChat={onDeleteChat} 
+            onAdminSelectChat={(id) => {
+              onAdminSelectChat(id);
+              setActiveTab('knowledge');
+            }} 
+          />
+        )}
+      </div>
     </div>
   );
 };

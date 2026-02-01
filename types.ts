@@ -10,8 +10,16 @@ export enum MessageSender {
   SYSTEM = 'system',
 }
 
+export type AIProvider = 'gemini' | 'openrouter' | 'custom';
+
 export interface UrlItem {
   url: string;
+  crawlMode: 'page' | 'site';
+}
+
+export interface VideoLinkItem {
+  url: string;
+  title?: string;
 }
 
 export interface UrlContextMetadataItem {
@@ -39,13 +47,14 @@ export interface ChatMessage {
   text: string;
   sender: MessageSender;
   timestamp: Date;
-  visitorId?: string; // ID unique du navigateur de l'élève
+  visitorId?: string; 
   isLoading?: boolean;
   urlContext?: UrlContextMetadataItem[];
 }
 
 export interface KnowledgeBase {
   urls: UrlItem[];
+  videoLinks: VideoLinkItem[];
   files: KnowledgeFile[];
   rawTexts: KnowledgeText[];
 }
@@ -56,6 +65,9 @@ export interface ChatSession {
   knowledgeBase: KnowledgeBase;
   chatMessages: ChatMessage[];
   assistantName: string;
+  modelName: string;
+  aiProvider: AIProvider;
+  sessionApiKey?: string;
 }
 
 export type AppView = 'chat' | 'admin';
