@@ -10,7 +10,7 @@ import {
   FileUp, ArrowLeft, Settings, Users, User, Clock, MessageSquare, AlertCircle,
   Maximize2, Minimize2, Save, Image as ImageIcon, Music, Film, Download, Database,
   MousePointer2, Layers, Video, Youtube, Cpu, Key, ExternalLink, ShieldCheck, Sparkles,
-  Link, Zap, Info
+  Link, Zap, Info, StickyNote, Eraser, Edit3
 } from 'lucide-react';
 import { KnowledgeBase, UrlItem, VideoLinkItem, KnowledgeFile, KnowledgeText, ChatSession, MessageSender, AIProvider } from '../types';
 import ChatSessionsAdmin from './ChatSessionsAdmin';
@@ -47,9 +47,11 @@ const AdminView: React.FC<AdminViewProps> = ({
   const [urlInput, setUrlInput] = useState('');
   const [videoUrlInput, setVideoUrlInput] = useState('');
   const [crawlMode, setCrawlMode] = useState<'page' | 'site'>('page');
+  
+  // États de l'éditeur de notes
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
-  const [isFullscreenNote, setIsFullscreenNote] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,22 +90,36 @@ const AdminView: React.FC<AdminViewProps> = ({
     setUrlInput('');
   };
 
-  const handleVideoUrlSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!videoUrlInput.trim()) return;
-    onAddVideoLink({ url: videoUrlInput.trim() });
-    setVideoUrlInput('');
-  };
-
   const handleTextSubmit = () => {
     if (!noteTitle.trim() || !noteContent.trim()) return;
+    
+    if (editingNoteId) {
+      // Mode modification : on supprime l'ancienne et on ajoute la nouvelle (simplification)
+      // Ou mieux: on gère la mise à jour via onUpdateSession si on veut être propre, 
+      // mais ici on utilise onRemoveText + onAddText pour rester compatible avec les props actuelles.
+      onRemoveText(editingNoteId);
+    }
+
     onAddText({
-      id: Math.random().toString(36).substr(2, 9),
+      id: editingNoteId || Math.random().toString(36).substr(2, 9),
       title: noteTitle.trim(),
       content: noteContent.trim(),
       createdAt: new Date()
     });
-    setNoteTitle(''); setNoteContent(''); setIsFullscreenNote(false);
+    
+    clearNoteEditor();
+  };
+
+  const clearNoteEditor = () => {
+    setNoteTitle('');
+    setNoteContent('');
+    setEditingNoteId(null);
+  };
+
+  const openNoteForEditing = (text: KnowledgeText) => {
+    setNoteTitle(text.title);
+    setNoteContent(text.content);
+    setEditingNoteId(text.id);
   };
 
   const handleOpenKeyPicker = async () => {
@@ -173,7 +189,7 @@ const AdminView: React.FC<AdminViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8 animate-in slide-in-from-bottom-8 duration-500">
-              {/* Colonnes de ressources (Identiques au code existant) */}
+              {/* Colonne 1: Liens */}
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-[750px] space-y-8">
                 <div>
                   <div className="flex items-center gap-3 mb-4">
@@ -197,6 +213,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                 </div>
               </div>
 
+              {/* Colonne 2: Médiathèque */}
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-[750px]">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><Database size={20} /></div>
@@ -219,26 +236,80 @@ const AdminView: React.FC<AdminViewProps> = ({
                 </div>
               </div>
 
+              {/* Colonne 3: Notes & Documents */}
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-[750px]">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><Type size={20} /></div>
-                  <h3 className="font-black text-xs uppercase tracking-widest text-gray-800">Notes</h3>
+                  <h3 className="font-black text-xs uppercase tracking-widest text-gray-800">Notes & Documents</h3>
                 </div>
-                <div className="space-y-3 mb-6">
-                  <input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none" />
-                  <textarea value={noteContent} onChange={e => setNoteContent(e.target.value)} placeholder="Contenu..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none h-40 resize-none" />
-                  <button onClick={handleTextSubmit} className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl text-[10px] uppercase shadow-lg">Enregistrer</button>
+                <div className="space-y-3 mb-6 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] font-black uppercase text-amber-600 tracking-widest">
+                      {editingNoteId ? 'Modification en cours...' : 'Nouveau Document'}
+                    </span>
+                    {editingNoteId && (
+                      <button onClick={clearNoteEditor} className="text-[9px] font-black uppercase text-gray-400 hover:text-red-500 flex items-center gap-1">
+                        <Eraser size={10} /> Annuler
+                      </button>
+                    )}
+                  </div>
+                  <input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre..." className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-400 transition-all" />
+                  <textarea value={noteContent} onChange={e => setNoteContent(e.target.value)} placeholder="Contenu..." className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none h-32 resize-none focus:border-amber-400 transition-all" />
+                  <button onClick={handleTextSubmit} className={`w-full py-3 text-white font-black rounded-xl text-[10px] uppercase shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${editingNoteId ? 'bg-indigo-600 shadow-indigo-100' : 'bg-amber-500 shadow-amber-100'}`}>
+                    <Save size={14} /> {editingNoteId ? 'Mettre à jour la note' : 'Enregistrer la note'}
+                  </button>
+                </div>
+
+                <div className="flex-grow overflow-y-auto chat-container pr-2 space-y-3 border-t border-gray-100 pt-4">
+                  {knowledgeBase.rawTexts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-gray-300">
+                      <StickyNote size={32} strokeWidth={1} />
+                      <p className="text-[9px] font-black uppercase tracking-widest mt-2">Aucune note</p>
+                    </div>
+                  ) : (
+                    knowledgeBase.rawTexts.map((text) => (
+                      <div 
+                        key={text.id} 
+                        onClick={() => openNoteForEditing(text)}
+                        className={`p-4 rounded-2xl border transition-all relative cursor-pointer group hover:scale-[1.02] active:scale-95 ${
+                          editingNoteId === text.id 
+                            ? 'bg-amber-50 border-amber-300 shadow-md ring-2 ring-amber-200' 
+                            : 'bg-gray-50/80 border-gray-100 hover:border-amber-200 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <h4 className="text-xs font-black text-gray-800 truncate pr-10">{text.title}</h4>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onRemoveText(text.id); if(editingNoteId === text.id) clearNoteEditor(); }} 
+                            className="absolute top-4 right-4 text-gray-300 hover:text-red-500 transition-colors p-1"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-gray-500 line-clamp-2 leading-relaxed">
+                          {text.content}
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className={`text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded border ${
+                            editingNoteId === text.id ? 'bg-amber-200 border-amber-400 text-amber-800' : 'bg-amber-50 border-amber-100 text-amber-600'
+                          }`}>
+                            {editingNoteId === text.id ? 'Édition active' : 'Note Enregistrée'}
+                          </span>
+                          <Edit3 size={10} className="text-gray-400 opacity-0 group-hover:opacity-100 ml-auto" />
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
           )
         )}
 
+        {/* Autres onglets (Config, Sessions, etc.) */}
         {activeTab === 'config' && currentSession && (
           <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-8 duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              
-              {/* Choix du Fournisseur */}
               <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl space-y-6">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
@@ -268,7 +339,6 @@ const AdminView: React.FC<AdminViewProps> = ({
                 </div>
               </div>
 
-              {/* Paramètres du Modèle */}
               <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl space-y-6">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center shadow-sm">
@@ -306,17 +376,10 @@ const AdminView: React.FC<AdminViewProps> = ({
                       placeholder="ex: anthropic/claude-3.5-sonnet"
                       className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-sm font-mono outline-none focus:border-amber-400"
                     />
-                    <div className="p-4 bg-amber-50 rounded-2xl flex gap-3">
-                      <Info size={16} className="text-amber-600 shrink-0" />
-                      <p className="text-[9px] text-amber-800 font-bold leading-relaxed">
-                        Entrez l'identifiant exact du modèle disponible sur OpenRouter (ex: openai/gpt-4o, meta-llama/llama-3-70b).
-                      </p>
-                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Gestion de la Clé API */}
               <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-xl space-y-6 md:col-span-2">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center shadow-sm">
@@ -349,20 +412,12 @@ const AdminView: React.FC<AdminViewProps> = ({
                       )}
                     </div>
                   </div>
-                  
-                  <div className="p-4 bg-gray-100 rounded-2xl">
-                    <p className="text-[10px] text-gray-500 font-bold leading-relaxed italic">
-                      Note : Si ce champ est vide, l'application utilisera la clé API configurée par défaut sur le serveur Linux. 
-                      Fournir une clé ici permet d'isoler les crédits pour cette classe spécifique.
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Reste des onglets (Monitoring, Sessions) identique */}
         {activeTab === 'sessions' && (
           <ChatSessionsAdmin 
             allChatSessions={allChatSessions} 
